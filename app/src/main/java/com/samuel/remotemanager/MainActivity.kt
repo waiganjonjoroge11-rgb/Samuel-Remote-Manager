@@ -12,6 +12,20 @@ import android.view.Gravity
 
 class MainActivity : Activity() {
 
+    ove
+package com.samuel.remotemanager
+
+import android.app.Activity
+import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.view.Gravity
+
+class MainActivity : Activity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
