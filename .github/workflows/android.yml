@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Download project
+      - name: Checkout project
         uses: actions/checkout@v4
 
       - name: Install Java
@@ -23,22 +23,16 @@ jobs:
 
       - name: Install Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          accept-android-sdk-licenses: true
-          log-accepted-android-sdk-licenses: false
 
-      - name: Install Android 16 SDK
-        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - name: Install Android packages
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
-      - name: Build Android APK
-        run: gradle :app:assembleDebug
-
-      - name: Save APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Samuel-Remote-Manager-APK
