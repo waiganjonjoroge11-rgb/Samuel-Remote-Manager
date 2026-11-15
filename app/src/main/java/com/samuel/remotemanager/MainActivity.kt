@@ -1,67 +1,56 @@
 
 package com.samuel.remotemanager
 
+import android.app.Activity
+import android.os.Bundle
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import android.view.Gravity
 
-class MainActivity : ComponentActivity() {
+class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 40, 32, 32)
+        val layout = LinearLayout(this)
+        layout.orientation = LinearLayout.VERTICAL
+        layout.gravity = Gravity.CENTER
+        layout.setPadding(30, 30, 30, 30)
+
+        val title = TextView(this)
+        title.text = "SAMUEL REMOTE MANAGER"
+        title.textSize = 24f
+
+        val status = TextView(this)
+        status.text = "Device manager is running"
+        status.textSize = 18f
+
+        val cameraButton = Button(this)
+        cameraButton.text = "Enable Camera Permission"
+
+        cameraButton.setOnClickListener {
+            requestPermissions(
+                arrayOf(Manifest.permission.CAMERA), 100
+            )
         }
 
-        val title = TextView(this).apply {
-            text = "SAMUEL REMOTE MANAGER"
-            textSize = 24f
+        val micButton = Button(this)
+        micButton.text = "Enable Microphone Permission"
+
+        micButton.setOnClickListener {
+            requestPermissions(
+                arrayOf(Manifest.permission.RECORD_AUDIO), 101
+            )
         }
+
         layout.addView(title)
-
-        val subtitle = TextView(this).apply {
-            text = "Secure Android Device Manager"
-            textSize = 16f
-        }
-        layout.addView(subtitle)
-
-        addButton(layout, "SMS MANAGEMENT") {
-            Toast.makeText(this, "SMS management setup next", Toast.LENGTH_SHORT).show()
-        }
-
-        addButton(layout, "TAKE PHOTO") {
-            Toast.makeText(this, "Camera setup next", Toast.LENGTH_SHORT).show()
-        }
-
-        addButton(layout, "RECORD VIDEO") {
-            Toast.makeText(this, "Video setup next", Toast.LENGTH_SHORT).show()
-        }
-
-        addButton(layout, "DEVICE STATUS") {
-            Toast.makeText(this, "Device status selected", Toast.LENGTH_SHORT).show()
-        }
+        layout.addView(status)
+        layout.addView(cameraButton)
+        layout.addView(micButton)
 
         setContentView(layout)
-    }
-
-    private fun addButton(
-        layout: LinearLayout,
-        label: String,
-        action: () -> Unit
-    ) {
-        val button = Button(this).apply {
-            text = label
-            setOnClickListener { action() }
-        }
-        layout.addView(button)
     }
 }
