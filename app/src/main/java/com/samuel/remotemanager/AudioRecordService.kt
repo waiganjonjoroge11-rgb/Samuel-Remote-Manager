@@ -10,13 +10,12 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.MediaRecorder
 import android.os.Build
+import android.util.Base64
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.storage.FirebaseStorage
-import com.google.firebase.storage.StorageMetadata
 import java.io.File
 import java.util.UUID
 
@@ -26,6 +25,7 @@ class AudioRecordService : LifecycleService() {
         const val ACTION_STOP="com.samuel.remotemanager.AUDIO_STOP"
         private const val CHANNEL="audio_recording"
         private const val NOTIFICATION_ID=4201
+        private const val MAX_ARCHIVE_BYTES=6L*1024L*1024L
     }
     private var recorder: MediaRecorder?=null
     private var output: File?=null
@@ -60,8 +60,8 @@ class AudioRecordService : LifecycleService() {
             media.setAudioSource(MediaRecorder.AudioSource.MIC)
             media.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             media.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            media.setAudioEncodingBitRate(96000)
-            media.setAudioSamplingRate(44100)
+            media.setAudioEncodingBitRate(64000)
+            media.setAudioSamplingRate(32000)
             media.setOutputFile(output!!.absolutePath)
             media.prepare()
             media.start()
@@ -89,25 +89,33 @@ class AudioRecordService : LifecycleService() {
         if(file==null || !file.exists() || file.length()==0L || uid==null || deviceId==null) {
             stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return
         }
-        val archiveId=UUID.randomUUID().toString()
-        val storagePath="users/${uid}/devices/${deviceId}/audioArchive/${archiveId}.m4a"
-        val storageRef=FirebaseStorage.getInstance().reference.child(storagePath)
-        storageRef.putFile(android.net.Uri.fromFile(file), StorageMetadata.Builder().setContentType("audio/mp4").build())
-            .continueWithTask { task ->
-                if(!task.isSuccessful) throw task.exception ?: IllegalStateException("Upload failed")
-                storageRef.metadata
-            }.addOnSuccessListener { metadata ->
-                val item=mapOf("storagePath" to storagePath,"capturedAt" to start,"uploadedAt" to System.currentTimeMillis(),"durationMs" to duration,"sizeBytes" to metadata.sizeBytes,"format" to "audio/mp4")
-                getDatabaseRef()?.child("audioArchive")?.child(archiveId)?.setValue(item)
-                    ?.addOnCompleteListener {
-                        file.delete()
-                        stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
-                    } ?: run { file.delete(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
-            }.addOnFailureListener {
-                getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,buildNotification("Upload failed. Keep this app open and retry."))
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-            }
+        if(file.length()>MAX_ARCHIVE_BYTES) {
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,buildNotification("Recording exceeds the 6 MB archive limit and was not uploaded."))
+            stopForeground(STOP_FOREGROUND_REMOVE); file.delete(); stopSelf(); return
+        }
+        try {
+            val archiveId=UUID.randomUUID().toString()
+            val encoded=Base64.encodeToString(file.readBytes(),Base64.NO_WRAP)
+            val item=mapOf(
+                "capturedAt" to start,
+                "uploadedAt" to System.currentTimeMillis(),
+                "durationMs" to duration,
+                "sizeBytes" to file.length(),
+                "format" to "audio/mp4",
+                "audioBase64" to encoded
+            )
+            getDatabaseRef()?.child("audioArchive")?.child(archiveId)?.setValue(item)
+                ?.addOnSuccessListener {
+                    file.delete()
+                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                }?.addOnFailureListener {
+                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,buildNotification("Cloud save failed. Recording remains temporarily on this phone."))
+                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                } ?: run { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+        } catch (_:Exception) {
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,buildNotification("Could not prepare recording for cloud archive."))
+            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+        }
     }
     private fun getDatabaseRef() = if(uid!=null && deviceId!=null) FirebaseDatabase.getInstance().reference.child("users").child(uid!!).child("devices").child(deviceId!!) else null
     private fun createChannel() {
@@ -118,7 +126,7 @@ class AudioRecordService : LifecycleService() {
         val open=PendingIntent.getActivity(this,4203,Intent(this,AudioRecordActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("Samuel Remote Manager · MICROPHONE ON").setContentText(message).setContentIntent(open)
-            .setOngoing(true).addAction(android.R.drawable.ic_media_pause,"Stop & upload",stop).build()
+            .setOngoing(true).addAction(android.R.drawable.ic_media_pause,"Stop & save",stop).build()
     }
     override fun onDestroy() {
         if(recorder!=null && !stopping) stopAndUpload()
