@@ -2,11 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:name=".ManagerApplication"
@@ -14,6 +16,7 @@
         android:label="Samuel Remote Manager"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".CameraShareActivity" android:exported="false" />
+        <activity android:name=".AudioRecordActivity" android:exported="false" />
         <activity android:name=".SmsRequestsActivity" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
@@ -27,6 +30,7 @@
             </intent-filter>
         </activity>
         <service android:name=".CameraShareService" android:exported="false" android:foregroundServiceType="camera" />
+        <service android:name=".AudioRecordService" android:exported="false" android:foregroundServiceType="microphone" />
         <service android:name=".LocationShareService" android:exported="false" android:foregroundServiceType="location" />
     </application>
 </manifest>
