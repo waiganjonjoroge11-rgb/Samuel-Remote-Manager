@@ -19,6 +19,7 @@ class SmsRequestsActivity : Activity() {
     private var listener: ChildEventListener? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (auth.currentUser == null) { finish(); return }
         val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(22,28,22,22) }
         root.addView(TextView(this).apply { text="SMS REQUESTS";textSize=22f })
         root.addView(TextView(this).apply { text="Review each request. Continue opens your SMS app with the recipient and message filled in; you must press Send there.";textSize=14f;setPadding(0,10,0,16) })
@@ -43,8 +44,8 @@ class SmsRequestsActivity : Activity() {
         val card=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL;setPadding(14,14,14,14) }
         card.addView(TextView(this).apply { text="To: $number\n\n$body";textSize=16f })
         card.addView(Button(this).apply { text="Review in SMS app";setOnClickListener {
-            if(number.isBlank()||body.isBlank()){Toast.makeText(this@SmsRequestsActivity,"Incomplete request.",Toast.LENGTH_SHORT).show();return@setOnClickListener}
-            val i=Intent(Intent.ACTION_SENDTO,Uri.parse("smsto:"+Uri.encode(number))).putExtra("sms_body",body)
+            if(!number.matches(Regex("^\\+?[0-9]{7,15}$"))||body.isBlank()){Toast.makeText(this@SmsRequestsActivity,"Incomplete request.",Toast.LENGTH_SHORT).show();return@setOnClickListener}
+            val i=Intent(Intent.ACTION_SENDTO,Uri.parse("smsto:$number")).putExtra("sms_body",body)
             try { startActivity(i);s.ref.child("status").setValue("opened_in_sms_app");s.ref.child("openedAt").setValue(System.currentTimeMillis()) }
             catch(_:Exception){Toast.makeText(this@SmsRequestsActivity,"No SMS app is available.",Toast.LENGTH_LONG).show()}
         } })
