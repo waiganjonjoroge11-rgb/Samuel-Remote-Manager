@@ -111,7 +111,8 @@ class MainActivity : Activity() {
                     .setNegativeButton("Decline") { _, _ -> audioCommandRef?.updateChildren(mapOf("status" to "declined", "respondedAt" to System.currentTimeMillis())) }
                     .setPositiveButton("Review on phone") { _, _ ->
                         audioCommandRef?.updateChildren(mapOf("status" to "accepted", "respondedAt" to System.currentTimeMillis()))
-                        startActivity(Intent(this@MainActivity, AudioRecordActivity::class.java))
+                        startActivity(Intent(this@MainActivity, AudioRecordActivity::class.java)
+                            .putExtra(AudioRecordActivity.EXTRA_APPROVED_REMOTE_START, true))
                     }
                     .setOnCancelListener { audioCommandRef?.updateChildren(mapOf("status" to "declined", "respondedAt" to System.currentTimeMillis())) }
                     .show()
