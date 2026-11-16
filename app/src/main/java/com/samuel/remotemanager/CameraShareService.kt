@@ -188,6 +188,14 @@ class CameraShareService : LifecycleService() {
         running = false
         handler.removeCallbacksAndMessages(null)
         cameraProvider?.unbindAll()
+        imageCapture = null
+        // Clear the live indicator and the last frame whenever Android stops this service,
+        // including when the owner uses the system/app stop control.
+        databasePath?.let { path ->
+            val ref = FirebaseDatabase.getInstance().reference.child(path)
+            ref.child("active").setValue(false)
+            ref.child("frame").removeValue()
+        }
         executor.shutdown()
         super.onDestroy()
     }
