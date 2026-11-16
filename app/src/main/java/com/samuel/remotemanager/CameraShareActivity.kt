@@ -117,7 +117,11 @@ class CameraShareActivity : ComponentActivity() {
     private fun stopSharing() {
         active = false
         handler.removeCallbacksAndMessages(null)
-        path?.let { FirebaseDatabase.getInstance().reference.child(it).child("active").setValue(false) }
+        path?.let {
+            val cameraRef = FirebaseDatabase.getInstance().reference.child(it)
+            cameraRef.child("active").setValue(false)
+            cameraRef.child("frame").removeValue()
+        }
         toggle.text = "Start camera sharing"
         status.text = "Camera sharing stopped."
     }
