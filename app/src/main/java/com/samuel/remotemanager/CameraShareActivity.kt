@@ -63,9 +63,10 @@ class CameraShareActivity : Activity() {
             try {
                 val provider = future.get()
                 val previewUseCase = Preview.Builder().build().also { it.setSurfaceProvider(preview.surfaceProvider) }
-                capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).setJpegQuality(50).build()
+                val imageCaptureUseCase = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).setJpegQuality(50).build()
+                capture = imageCaptureUseCase
                 provider.unbindAll()
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, previewUseCase, capture)
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, previewUseCase, imageCaptureUseCase)
                 status.text = "Local preview ready. Tap Start to send periodic still images to your signed-in website."
                 toggle.isEnabled = true
             } catch (e: Exception) { status.text = "Camera unavailable: ${e.localizedMessage}" }
