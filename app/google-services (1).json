@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "674102252857",
+    "project_id": "samuel-remote-manager",
+    "storage_bucket": "samuel-remote-manager.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:674102252857:android:deaa5cc2ba1dcb1359c4e8",
+        "android_client_info": {
+          "package_name": "com.samuel.remotemanager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCUdX7IVWUEKAx5dK9hBh4_JU0hKryMsYs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
