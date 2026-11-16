@@ -1,48 +1,44 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1220">
+<meta name="description" content="Samuel Remote Manager — an authorized Android device management dashboard.">
 <title>Samuel Remote Manager</title>
 <style>
-body{margin:0;background:#101827;color:white;font-family:Arial}
-header{background:#17243a;padding:20px;text-align:center}
-main{max-width:600px;margin:20px auto;padding:15px}
-.card{background:#1d2b42;padding:20px;border-radius:14px;margin-bottom:15px}
-button{width:100%;padding:15px;margin-top:10px;background:#2878e8;color:white;border:0;border-radius:9px;font-size:16px}
-.status{color:orange}
+:root{color-scheme:dark;--bg:#0b1220;--panel:#121e31;--line:#243650;--muted:#a9b8cc;--blue:#4388f5;--green:#37c98b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#162945 0,var(--bg) 55%);color:#f4f7fb;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+header{padding:28px 18px 18px;text-align:center;border-bottom:1px solid var(--line);background:#0b1220b8}
+.brand{display:inline-flex;align-items:center;gap:12px}.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#4388f5,#6c5ce7);display:grid;place-items:center;font-size:23px}
+h1{font-size:clamp(23px,5vw,32px);margin:0}header p{color:var(--muted);margin:7px 0 0}
+main{max-width:900px;margin:26px auto;padding:0 16px 40px}
+.status{display:flex;align-items:center;gap:10px;padding:15px 17px;border:1px solid #6a5226;background:#302817;border-radius:14px;margin-bottom:18px}
+.dot{width:10px;height:10px;border-radius:50%;background:#f0b64c;box-shadow:0 0 0 4px #f0b64c22}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.card{background:linear-gradient(160deg,#17263c,#111c2e);border:1px solid var(--line);border-radius:17px;padding:20px;min-height:174px}
+.card h2{font-size:18px;margin:0 0 8px}.card p{color:var(--muted);margin:0 0 16px}
+.tag{display:inline-block;font-size:12px;padding:4px 9px;border-radius:999px;background:#29374a;color:#cbd7e7}
+a.action{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;background:var(--blue);color:white;padding:11px 15px;border-radius:10px;font-weight:650}
+a.action.secondary{background:#263750;border:1px solid #38516f}
+.notice{margin-top:18px;padding:17px;border:1px solid var(--line);border-radius:14px;color:var(--muted);background:#111c2e}
+footer{text-align:center;color:#7f91a9;font-size:13px;padding:18px}
+@media(max-width:480px){header{padding-top:22px}.status{align-items:flex-start}}
 </style>
 </head>
 <body>
-<header>
-<h2>Samuel Remote Manager</h2>
-<p>Remote Android Management</p>
-</header>
+<header><div class="brand"><div class="logo" aria-hidden="true">⌁</div><div><h1>Samuel Remote Manager</h1><p>Authorized Android device management</p></div></div></header>
 <main>
-<div class="card">
-<h3>Target Android Phone</h3>
-<p class="status">● Waiting for connection</p>
-<p>Device: Second Android Phone</p>
-</div>
-<div class="card">
-<h3>📷 Remote Camera</h3>
-<p>Request an authorized photo capture.</p>
-<button disabled>Request Photo</button>
-</div>
-<div class="card">
-<h3>📍 GPS Location</h3>
-<p>View shared device location.</p>
-<button disabled>View Location</button>
-</div>
-<div class="card">
-<h3>📱 Screen Sharing</h3>
-<p>View an approved screen-sharing session.</p>
-<button disabled>View Screen</button>
-</div>
-<div class="card">
-<h3>🖼 Captured Photos</h3>
-<p>Captured photos will appear here.</p>
-</div>
+<section class="status" role="status" aria-live="polite"><span class="dot"></span><div><strong>Dashboard is online</strong><br><span style="color:#e8c98d">No Android device is connected yet.</span></div></section>
+<section class="grid" aria-label="Dashboard">
+<article class="card"><h2>📱 Android application</h2><p>Open the project and build the Android app. Install it on a device you own or are authorized to manage.</p><a class="action" href="https://github.com/waiganjonjoroge11-rgb/Samuel-Remote-Manager/actions">Open APK build</a></article>
+<article class="card"><h2>🔗 Pair a device</h2><p>Device pairing and authenticated Firebase connection still need to be configured in the Android app and this dashboard.</p><span class="tag">Setup required</span></article>
+<article class="card"><h2>📍 Location sharing</h2><p>Location can be shared only after the device owner grants permission and starts an authorized session.</p><span class="tag">Not connected</span></article>
+<article class="card"><h2>📷 Camera and screen</h2><p>Camera capture and screen sharing require clear on-device permission and an active user-approved session.</p><span class="tag">Not connected</span></article>
+</section>
+<section class="notice"><strong>Security first</strong><br>This dashboard does not secretly access a phone. Remote features must use secure sign-in, device pairing, and visible Android permissions. Do not share Firebase service-account keys or private credentials.</section>
+<section style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px"><a class="action secondary" href="https://github.com/waiganjonjoroge11-rgb/Samuel-Remote-Manager">View GitHub project</a><a class="action secondary" href="https://github.com/waiganjonjoroge11-rgb/Samuel-Remote-Manager/actions">Build history</a></section>
 </main>
+<footer>Samuel Remote Manager · Secure device access only</footer>
 </body>
 </html>
