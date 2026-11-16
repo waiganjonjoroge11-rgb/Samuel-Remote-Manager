@@ -65,6 +65,10 @@ class MainActivity : Activity() {
                 setOnClickListener { requestLocationAndStart() }
             })
             root.addView(Button(this).apply {
+                text = "Open camera sharing"
+                setOnClickListener { startActivity(Intent(this@MainActivity, CameraShareActivity::class.java)) }
+            })
+            root.addView(Button(this).apply {
                 text = "Stop location sharing"
                 setOnClickListener {
                     stopService(Intent(this@MainActivity, LocationShareService::class.java))
