@@ -10,7 +10,7 @@ class ManagerApplication : Application() {
         if (FirebaseApp.getApps(this).isEmpty()) {
             val options = FirebaseOptions.Builder()
                 .setApiKey("AIzaSyA-_uLuM51qj4CPExd0DWkFkQ6iGrYGfn0")
-                .setApplicationId("1:674102252857:web:2b4a16e5103a37d959c4e8")
+                .setApplicationId("1:674102252857:android:deaa5cc2ba1dcb1359c4e8")
                 .setProjectId("samuel-remote-manager")
                 .setDatabaseUrl("https://samuel-remote-manager-default-rtdb.firebaseio.com")
                 .setStorageBucket("samuel-remote-manager.firebasestorage.app")
