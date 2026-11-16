@@ -58,59 +58,120 @@ window.addEventListener("DOMContentLoaded", () => {
   function setConnection(message, online=false) {
     connection.innerHTML = '<span class="dot '+(online?'on':'')+'"></span><strong>'+escapeHtml(message)+'</strong>';
   }
-  function showDevices(snapshot) {
-    const data = snapshot.val() || {};
-    const entries = Object.entries(data);
+  const deviceData = new Map();
+  const deviceRefs = new Map();
+  let discoveryTimer = null;
+  function renderDevices() {
+    const entries = [...deviceData.entries()];
     if (!entries.length) {
-      $("devices").innerHTML = '<p class="muted">No device has shared data yet. On your Android phone, sign in with this account and tap “Start sharing my location”.</p>';
+      $("devices").innerHTML = '<p class="muted">Waiting for device data… If your phone is signed in, keep the Android app open.</p>';
       return;
     }
     $("devices").innerHTML = '<div class="device-grid">'+entries.map(([id,d]) => {
       const sharing = d.sharing === true;
       const seen = d.lastSeen ? new Date(Number(d.lastSeen)).toLocaleString() : "Not reported";
-      const hasLocation = Number.isFinite(Number(d.latitude)) && Number.isFinite(Number(d.longitude));
+      const hasLocation = Number.isFinite(Number(d.latitude)) && Number.isFinite(Number(d.longitude)) && d.latitude !== null && d.longitude !== null;
       const coords = hasLocation ? Number(d.latitude)+", "+Number(d.longitude) : "Location not available";
       const map = hasLocation ? '<p><a class="action" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat='+encodeURIComponent(d.latitude)+'&mlon='+encodeURIComponent(d.longitude)+'#map=16/'+encodeURIComponent(d.latitude)+'/'+encodeURIComponent(d.longitude)+'">View on map</a></p>' : "";
       const camera = d.camera || {};
-      const cameraView = camera.active && camera.frame ? "<div class=\"metric\" style=\"margin-top:10px\"><small>Live owner-approved camera snapshot</small><img alt=\"Shared camera snapshot\" style=\"display:block;width:100%;border-radius:8px;margin-top:8px\" src=\"data:image/jpeg;base64," + escapeHtml(camera.frame) + "\"><small>Updated: " + escapeHtml(camera.updatedAt ? new Date(camera.updatedAt).toLocaleTimeString() : "recently") + "</small></div>" : "<p class=\"notice\">Camera not currently shared by this phone.</p>";
-      const audioArchive = Object.entries(d.audioArchive || {}).sort((a,b) => Number(b[1].capturedAt || 0) - Number(a[1].capturedAt || 0)).slice(0,50);
-      const audioView = "<div class='metric' style='margin-top:10px'><strong>Cloud audio archive (" + audioArchive.length + ")</strong><div id='audio-archive-" + escapeHtml(id) + "'>" + (audioArchive.length ? audioArchive.map(([key]) => "<div id='audio-item-" + escapeHtml(id) + "-" + escapeHtml(key) + "' class='notice'>Loading recording…</div>").join("") : "<p class='notice'>No cloud recordings yet.</p>") + "</div></div>";
-      const archived = Object.entries(camera.archive || {}).sort((a,b) => Number(b[1].capturedAt || 0) - Number(a[1].capturedAt || 0)).slice(0,30);
-      const archiveView = "<div class=\"metric\" style=\"margin-top:10px\"><strong>Snapshot archive (" + archived.length + "/30)</strong>" + (archived.length ? archived.map(([key,item]) => "<figure style=\"margin:10px 0;padding:8px;background:#0c192a;border-radius:8px\"><img alt=\"Archived camera snapshot\" loading=\"lazy\" style=\"display:block;width:100%;border-radius:6px\" src=\"data:image/jpeg;base64," + escapeHtml(item.frame || "") + "\"><figcaption class=\"notice\">" + escapeHtml(item.capturedAt ? new Date(item.capturedAt).toLocaleString() : "Date unavailable") + "</figcaption></figure>").join("") : "<p class=\"notice\">No archived snapshots yet. Start camera sharing on the phone to create them.</p>") + "</div>";
-      const remote = d.remoteCommands && d.remoteCommands.startCamera ? d.remoteCommands.startCamera : {};
+      const cameraView = camera.active && camera.frame ? "<div class='metric' style='margin-top:10px'><small>Live owner-approved camera snapshot</small><img alt='Shared camera snapshot' loading='lazy' style='display:block;width:100%;border-radius:8px;margin-top:8px' src='data:image/jpeg;base64," + escapeHtml(camera.frame) + "'><small>Updated: " + escapeHtml(camera.updatedAt ? new Date(camera.updatedAt).toLocaleTimeString() : "recently") + "</small></div>" : "<p class='notice'>Camera not currently shared by this phone.</p>";
+      const remote = d.remoteCommands?.startCamera || {};
       const remoteStatus = remote.status || "not requested";
       const remoteLabel = remoteStatus === "pending" ? "Request pending — open the app on the phone" : remoteStatus === "accepted" ? "Request accepted — phone owner must tap Start" : remoteStatus === "declined" ? "Last request declined" : "No request sent";
-      const audioRemote = d.remoteCommands && d.remoteCommands.startAudio ? d.remoteCommands.startAudio : {};
+      const audioRemote = d.remoteCommands?.startAudio || {};
       const audioRemoteStatus = audioRemote.status || "not requested";
       const audioRemoteLabel = audioRemoteStatus === "pending" ? "Request pending — phone app must be open" : audioRemoteStatus === "accepted" ? "Accepted — owner must grant microphone access and tap Start" : audioRemoteStatus === "declined" ? "Last request declined" : "No audio request sent";
-      const audioRecording = d.recording && d.recording.active === true ? "Recording active (check the phone's visible notification)" : "Not recording";
-      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+ (Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><small style="display:block;margin-top:8px">Audio request</small><strong>'+escapeHtml(audioRemoteLabel)+'</strong><small style="display:block;margin-top:8px">Microphone status</small><strong>'+escapeHtml(audioRecording)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+archiveView+audioView+'<p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
+      const audioRecording = d.recording?.active === true ? "Recording active (check the phone's visible notification)" : "Not recording";
+      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+(Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><small style="display:block;margin-top:8px">Audio request</small><strong>'+escapeHtml(audioRemoteLabel)+'</strong><small style="display:block;margin-top:8px">Microphone status</small><strong>'+escapeHtml(audioRecording)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+'<div class="metric" style="margin-top:10px"><strong>Saved archives</strong><p class="notice">Archives are loaded only when requested so they do not delay the dashboard.</p><div class="actions"><button class="secondary" data-load-audio="1" data-device="'+escapeHtml(id)+'">Load last 5 recordings</button><button class="secondary" data-load-camera="1" data-device="'+escapeHtml(id)+'">Load last 10 snapshots</button></div><div id="archive-results-'+escapeHtml(id)+'"></div></div><p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
     }).join("")+'</div>';
-    entries.forEach(([deviceId, device]) => {
-      Object.entries(device.audioArchive || {}).sort((a,b) => Number(b[1].capturedAt || 0) - Number(a[1].capturedAt || 0)).slice(0,50).forEach(async ([archiveId, item]) => {
-        const target = document.getElementById("audio-item-" + deviceId + "-" + archiveId);
-        if (!target || !item.audioBase64) return;
-        try {
-          const binary = atob(item.audioBase64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          const blob = new Blob([bytes], {type: item.format || "audio/mp4"});
-          const url = URL.createObjectURL(blob);
-          if (!target.isConnected) { URL.revokeObjectURL(url); return; }
-          target.textContent = (item.capturedAt ? new Date(Number(item.capturedAt)).toLocaleString() : "Date unavailable") + " · " + Math.max(1, Math.round(Number(item.durationMs || 0)/1000)) + " sec";
-          const player = document.createElement("audio");
-          player.controls = true; player.preload = "none"; player.src = url; player.style.display = "block"; player.style.width = "100%";
-          target.appendChild(player);
-          const remove = document.createElement("button");
-          remove.type = "button"; remove.className = "secondary"; remove.textContent = "Delete recording";
-          remove.dataset.deleteAudio = "1"; remove.dataset.device = deviceId; remove.dataset.archive = archiveId;
-          remove.style.marginTop = "6px"; target.appendChild(remove);
-        } catch (error) { if (target.isConnected) target.textContent = "Recording unavailable — invalid archive data."; }
+  }
+  async function discoverDevices() {
+    const user = firebase.auth().currentUser;
+    if (!user) return;
+    try {
+      const token = await user.getIdToken();
+      const url = firebaseConfig.databaseURL + "/users/" + encodeURIComponent(user.uid) + "/devices.json?shallow=true&auth=" + encodeURIComponent(token);
+      const response = await fetch(url, {cache:"no-store"});
+      if (!response.ok) throw new Error("Device index request failed ("+response.status+")");
+      const keys = await response.json() || {};
+      Object.keys(keys).forEach(attachDevice);
+      for (const id of [...deviceRefs.keys()]) {
+        if (!(id in keys)) detachDevice(id);
+      }
+      if (!deviceData.size) $("devices").innerHTML = '<p class="muted">No device has shared data yet. On your Android phone, sign in with this account and tap “Start sharing my location”.</p>';
+    } catch (error) {
+      $("devices").innerHTML = '<p class="error">Could not load device list: '+escapeHtml(error.message)+'</p>';
+    }
+  }
+  function attachDevice(id) {
+    if (deviceRefs.has(id)) return;
+    const base = firebase.database().ref("users/"+firebase.auth().currentUser.uid+"/devices/"+id);
+    const paths = ["deviceName","sharing","lastSeen","latitude","longitude","accuracyMeters","recording","remoteCommands/startCamera","remoteCommands/startAudio","camera/active","camera/frame","camera/updatedAt"];
+    const refs = [];
+    const data = {};
+    deviceData.set(id, data);
+    paths.forEach(path => {
+      const ref = base.child(path);
+      const listener = snap => {
+        const parts = path.split("/");
+        let target = data;
+        for (let i=0;i<parts.length-1;i++) target = target[parts[i]] ||= {};
+        target[parts[parts.length-1]] = snap.val();
+        renderDevices();
+      };
+      ref.on("value", listener, error => {
+        $("devices").innerHTML = '<p class="error">Device update error: '+escapeHtml(error.message)+'</p>';
       });
+      refs.push({ref,listener});
     });
+    deviceRefs.set(id, refs);
+  }
+  function detachDevice(id) {
+    (deviceRefs.get(id)||[]).forEach(({ref,listener}) => ref.off("value",listener));
+    deviceRefs.delete(id);
+    deviceData.delete(id);
+  }
+  async function loadArchives(deviceId, kind, button) {
+    const user = firebase.auth().currentUser;
+    if (!user) return;
+    const target = document.getElementById("archive-results-"+deviceId);
+    if (!target) return;
+    button.disabled = true;
+    target.innerHTML = '<p class="notice">Loading saved '+(kind==="audio"?"recordings":"snapshots")+'…</p>';
+    try {
+      const ref = firebase.database().ref("users/"+user.uid+"/devices/"+deviceId+"/"+(kind==="audio"?"audioArchive":"camera/archive"));
+      const snap = kind==="audio"
+        ? await ref.orderByChild("capturedAt").limitToLast(5).once("value")
+        : await ref.orderByChild("capturedAt").limitToLast(10).once("value");
+      const items = [];
+      snap.forEach(child => items.push({key:child.key,...(child.val()||{})}));
+      items.sort((a,b)=>Number(b.capturedAt||0)-Number(a.capturedAt||0));
+      if (!items.length) { target.innerHTML='<p class="notice">No saved '+(kind==="audio"?"recordings":"snapshots")+' found.</p>'; return; }
+      if (kind==="camera") {
+        target.innerHTML = items.map(item=>'<figure style="margin:10px 0;padding:8px;background:#0c192a;border-radius:8px"><img loading="lazy" alt="Archived camera snapshot" style="display:block;width:100%;border-radius:6px" src="data:image/jpeg;base64,'+escapeHtml(item.frame||'')+'"><figcaption class="notice">'+escapeHtml(item.capturedAt?new Date(Number(item.capturedAt)).toLocaleString():"Date unavailable")+'</figcaption></figure>').join("");
+      } else {
+        target.innerHTML = "";
+        items.forEach(item => {
+          const row=document.createElement("div"); row.className="metric"; row.style.marginTop="8px";
+          const label=document.createElement("p"); label.className="notice"; label.textContent=(item.capturedAt?new Date(Number(item.capturedAt)).toLocaleString():"Date unavailable")+" · "+Math.max(1,Math.round(Number(item.durationMs||0)/1000))+" sec";
+          row.appendChild(label);
+          if (item.audioBase64) {
+            const binary=atob(item.audioBase64), bytes=new Uint8Array(binary.length);
+            for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+            const player=document.createElement("audio"); player.controls=true; player.preload="none"; player.src=URL.createObjectURL(new Blob([bytes],{type:item.format||"audio/mp4"})); player.style.width="100%"; row.appendChild(player);
+          }
+          const remove=document.createElement("button"); remove.className="secondary"; remove.textContent="Delete recording"; remove.style.marginTop="6px";
+          remove.addEventListener("click",async()=>{if(!window.confirm("Delete this audio recording from your cloud archive?"))return;remove.disabled=true;try{await firebase.database().ref("users/"+user.uid+"/devices/"+deviceId+"/audioArchive/"+item.key).remove();row.remove();}catch(e){remove.disabled=false;authMessage.className="error";authMessage.textContent="Could not delete recording: "+e.message;}});
+          row.appendChild(remove); target.appendChild(row);
+        });
+      }
+    } catch(error) { target.innerHTML='<p class="error">Could not load archive: '+escapeHtml(error.message)+'</p>'; }
+    finally { button.disabled=false; }
   }
   function stopDeviceListener() {
-    if (devicesRef && devicesListener) devicesRef.off("value", devicesListener);
+    if (discoveryTimer) { clearInterval(discoveryTimer); discoveryTimer = null; }
+    for (const id of [...deviceRefs.keys()]) detachDevice(id);
+    deviceData.clear();
     devicesRef = null; devicesListener = null;
   }
   try {
@@ -129,6 +190,11 @@ window.addEventListener("DOMContentLoaded", () => {
     });
     $("signOut").addEventListener("click", () => auth.signOut());
     $("devices").addEventListener("click", async event => {
+      const archiveButton = event.target.closest("[data-load-audio], [data-load-camera]");
+      if (archiveButton) {
+        await loadArchives(archiveButton.dataset.device, archiveButton.hasAttribute("data-load-audio") ? "audio" : "camera", archiveButton);
+        return;
+      }
       const deleteButton = event.target.closest("[data-delete-audio]");
       if (deleteButton) {
         const user = auth.currentUser;
@@ -175,11 +241,9 @@ window.addEventListener("DOMContentLoaded", () => {
       if (!user) { setConnection("Firebase connected · Sign in to view your devices", true); return; }
       $("signedInAs").textContent = "Signed in as "+user.email;
       setConnection("Signed in · Listening for device updates", true);
-      devicesRef = database.ref("users/"+user.uid+"/devices");
-      devicesListener = snapshot => showDevices(snapshot);
-      devicesRef.on("value", devicesListener, error => {
-        $("devices").innerHTML='<p class="error">'+escapeHtml(error.message)+'</p>';
-      });
+      $("devices").innerHTML = '<p class="muted">Loading device list…</p>';
+      discoverDevices();
+      discoveryTimer = setInterval(discoverDevices, 15000);
     });
   } catch (e) {
     setConnection("Firebase setup error: "+e.message);
