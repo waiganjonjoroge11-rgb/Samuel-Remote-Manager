@@ -13,6 +13,8 @@
         android:label="Samuel Remote Manager"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name=".CameraShareActivity" android:exported="false" />
+        <activity android:name=".SmsRequestsActivity" android:exported="false" />
+        <activity android:name=".MainActivity" android:exported="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
