@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
+        android:name=".ManagerApplication"
         android:allowBackup="false"
         android:label="Samuel Remote Manager"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
