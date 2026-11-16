@@ -14,6 +14,9 @@ import androidx.core.content.ContextCompat
 import com.google.firebase.auth.FirebaseAuth
 
 class AudioRecordActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_APPROVED_REMOTE_START = "com.samuel.remotemanager.APPROVED_REMOTE_AUDIO_START"
+    }
     private lateinit var status: TextView
     private lateinit var startButton: Button
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
@@ -39,6 +42,8 @@ class AudioRecordActivity : ComponentActivity() {
         } })
         root.addView(Button(this).apply { text="Close"; setOnClickListener { finish() } })
         setContentView(root)
+        // A remote request starts capture only after the owner approves the on-phone dialog.
+        if (intent.getBooleanExtra(EXTRA_APPROVED_REMOTE_START, false)) requestAndStart()
     }
     private fun requestAndStart() {
         if (FirebaseAuth.getInstance().currentUser == null) { status.text="Sign in to Samuel Remote Manager before recording."; return }
