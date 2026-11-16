@@ -15,7 +15,6 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 </head>
 <body>
 <header><div class="brand"><div class="logo" aria-hidden="true">⌁</div><div><h1>Samuel Remote Manager</h1><p>Authorized Android device management</p></div></div></header>
@@ -30,7 +29,7 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2>Your devices</h2><p class="muted" id="signedInAs"></p></div><button class="secondary" id="signOut">Sign out</button></div>
 <div id="devices"><p class="muted">Waiting for device data…</p></div>
 </section>
-<section class="panel"><h2>Audio recording</h2><p class="notice">Use Request audio recording on a device card. The phone app must be open. The phone owner must approve, grant microphone permission if needed, and tap Start. A persistent microphone notification remains visible. Recordings upload to the owner’s Firebase Storage and appear in the archive below. Silent recording is not supported.</p></section>
+<section class="panel"><h2>Audio recording</h2><p class="notice">Use Request audio recording on a device card. The phone app must be open. The phone owner must approve, grant microphone permission if needed, and tap Start. A persistent microphone notification remains visible. Short recordings are saved in the owner’s private Firebase Realtime Database archive. A 6 MB file-size limit applies. Silent recording is not supported.</p></section>
 <section class="panel"><h2>Camera sharing</h2><p class="notice">Use “Request camera screen” on a device card to send an owner-confirmed request. The Samuel Remote Manager app must already be open on the phone to receive it. The owner must approve the prompt, grant camera permission if asked, and tap Start. A visible Android notification remains while sharing. This is a periodic still-image feed, not continuous video.</p></section>
 <section class="panel"><h2>Security and privacy</h2><p class="notice">This dashboard displays only data shared by a device signed into the same account. Location sharing must be started by the phone owner in the Android app and remains visible through an ongoing Android notification. Audio and camera capture require visible, on-device owner approval and remain visibly active. This dashboard does not secretly access a camera, microphone, screen, or device controls.</p></section>
 </main>
@@ -83,19 +82,23 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
     entries.forEach(([deviceId, device]) => {
       Object.entries(device.audioArchive || {}).sort((a,b) => Number(b[1].capturedAt || 0) - Number(a[1].capturedAt || 0)).slice(0,50).forEach(async ([archiveId, item]) => {
         const target = document.getElementById("audio-item-" + deviceId + "-" + archiveId);
-        if (!target || !item.storagePath) return;
+        if (!target || !item.audioBase64) return;
         try {
-          const url = await firebase.storage().ref(item.storagePath).getDownloadURL();
-          if (!target.isConnected) return;
+          const binary = atob(item.audioBase64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const blob = new Blob([bytes], {type: item.format || "audio/mp4"});
+          const url = URL.createObjectURL(blob);
+          if (!target.isConnected) { URL.revokeObjectURL(url); return; }
           target.textContent = (item.capturedAt ? new Date(Number(item.capturedAt)).toLocaleString() : "Date unavailable") + " · " + Math.max(1, Math.round(Number(item.durationMs || 0)/1000)) + " sec";
           const player = document.createElement("audio");
           player.controls = true; player.preload = "none"; player.src = url; player.style.display = "block"; player.style.width = "100%";
           target.appendChild(player);
           const remove = document.createElement("button");
           remove.type = "button"; remove.className = "secondary"; remove.textContent = "Delete recording";
-          remove.dataset.deleteAudio = "1"; remove.dataset.device = deviceId; remove.dataset.archive = archiveId; remove.dataset.storagePath = item.storagePath;
+          remove.dataset.deleteAudio = "1"; remove.dataset.device = deviceId; remove.dataset.archive = archiveId;
           remove.style.marginTop = "6px"; target.appendChild(remove);
-        } catch (error) { if (target.isConnected) target.textContent = "Recording unavailable — check Firebase Storage rules."; }
+        } catch (error) { if (target.isConnected) target.textContent = "Recording unavailable — invalid archive data."; }
       });
     });
   }
@@ -124,12 +127,10 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
         const user = auth.currentUser;
         const deviceId = deleteButton.dataset.device;
         const archiveId = deleteButton.dataset.archive;
-        const storagePath = deleteButton.dataset.storagePath;
-        if (!user || !deviceId || !archiveId || !storagePath) return;
+        if (!user || !deviceId || !archiveId) return;
         if (!window.confirm("Delete this audio recording from your cloud archive?")) return;
         deleteButton.disabled = true;
         try {
-          await firebase.storage().ref(storagePath).delete();
           await database.ref("users/" + user.uid + "/devices/" + deviceId + "/audioArchive/" + archiveId).remove();
         } catch (error) {
           deleteButton.disabled = false;
