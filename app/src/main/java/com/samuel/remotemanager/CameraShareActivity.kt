@@ -1,7 +1,7 @@
 package com.samuel.remotemanager
 
 import android.Manifest
-import android.app.Activity
+import androidx.activity.ComponentActivity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -26,7 +26,7 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
 
-class CameraShareActivity : Activity() {
+class CameraShareActivity : ComponentActivity() {
     private lateinit var preview: PreviewView
     private lateinit var status: TextView
     private lateinit var toggle: Button
