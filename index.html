@@ -29,7 +29,7 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2>Your devices</h2><p class="muted" id="signedInAs"></p></div><button class="secondary" id="signOut">Sign out</button></div>
 <div id="devices"><p class="muted">Waiting for device data…</p></div>
 </section>
-<section class="panel"><h2>Camera sharing</h2><p class="notice">Camera snapshots appear only when the phone owner opens the camera screen, grants permission, and taps Start. This is a periodic still-image feed, not continuous video. Keep the phone screen and camera session open.</p></section>
+<section class="panel"><h2>Camera sharing</h2><p class="notice">Use “Request camera screen” on a device card to send an owner-confirmed request. The Samuel Remote Manager app must already be open on the phone to receive it. The owner must approve the prompt, grant camera permission if asked, and tap Start. A visible Android notification remains while sharing. This is a periodic still-image feed, not continuous video.</p></section>
 <section class="panel"><h2>Security and privacy</h2><p class="notice">This dashboard displays only data shared by a device signed into the same account. Location sharing must be started by the phone owner in the Android app and remains visible through an ongoing Android notification. This dashboard does not secretly access a camera, microphone, screen, or device controls.</p></section>
 </main>
 <footer>Samuel Remote Manager · Secure device access only</footer>
@@ -71,7 +71,10 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
       const cameraView = camera.active && camera.frame ? "<div class=\"metric\" style=\"margin-top:10px\"><small>Live owner-approved camera snapshot</small><img alt=\"Shared camera snapshot\" style=\"display:block;width:100%;border-radius:8px;margin-top:8px\" src=\"data:image/jpeg;base64," + escapeHtml(camera.frame) + "\"><small>Updated: " + escapeHtml(camera.updatedAt ? new Date(camera.updatedAt).toLocaleTimeString() : "recently") + "</small></div>" : "<p class=\"notice\">Camera not currently shared by this phone.</p>";
       const archived = Object.entries(camera.archive || {}).sort((a,b) => Number(b[1].capturedAt || 0) - Number(a[1].capturedAt || 0)).slice(0,30);
       const archiveView = "<div class=\"metric\" style=\"margin-top:10px\"><strong>Snapshot archive (" + archived.length + "/30)</strong>" + (archived.length ? archived.map(([key,item]) => "<figure style=\"margin:10px 0;padding:8px;background:#0c192a;border-radius:8px\"><img alt=\"Archived camera snapshot\" loading=\"lazy\" style=\"display:block;width:100%;border-radius:6px\" src=\"data:image/jpeg;base64," + escapeHtml(item.frame || "") + "\"><figcaption class=\"notice\">" + escapeHtml(item.capturedAt ? new Date(item.capturedAt).toLocaleString() : "Date unavailable") + "</figcaption></figure>").join("") : "<p class=\"notice\">No archived snapshots yet. Start camera sharing on the phone to create them.</p>") + "</div>";
-      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+ (Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div>'+map+cameraView+archiveView+'<p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
+      const remote = d.remoteCommands && d.remoteCommands.startCamera ? d.remoteCommands.startCamera : {};
+      const remoteStatus = remote.status || "not requested";
+      const remoteLabel = remoteStatus === "pending" ? "Request pending — open the app on the phone" : remoteStatus === "accepted" ? "Request accepted — phone owner must tap Start" : remoteStatus === "declined" ? "Last request declined" : "No request sent";
+      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+ (Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Remote camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+archiveView+'<p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
     }).join("")+'</div>';
   }
   function stopDeviceListener() {
@@ -93,6 +96,29 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
       catch (e) { authMessage.className="error"; authMessage.textContent=e.message; }
     });
     $("signOut").addEventListener("click", () => auth.signOut());
+    $("devices").addEventListener("click", async event => {
+      const button = event.target.closest("[data-request-camera]");
+      if (!button) return;
+      const user = auth.currentUser;
+      const deviceId = button.getAttribute("data-device");
+      if (!user || !deviceId) return;
+      button.disabled = true;
+      try {
+        const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(36).slice(2);
+        await database.ref("users/" + user.uid + "/devices/" + deviceId + "/remoteCommands/startCamera").set({
+          action: "open_camera_screen",
+          requestId,
+          status: "pending",
+          requestedAt: Date.now()
+        });
+        button.textContent = "Request sent";
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Request failed — retry";
+        authMessage.className = "error";
+        authMessage.textContent = error.message;
+      }
+    });
     auth.onAuthStateChanged(user => {
       stopDeviceListener();
       authPanel.classList.toggle("hidden", !!user);
