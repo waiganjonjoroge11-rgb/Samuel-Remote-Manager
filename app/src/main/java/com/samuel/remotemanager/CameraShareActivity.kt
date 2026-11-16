@@ -1,131 +1,88 @@
 package com.samuel.remotemanager
 
 import android.Manifest
-import androidx.activity.ComponentActivity
-import androidx.activity.result.contract.ActivityResultContracts
-import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.util.Base64
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
+import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase
-import java.io.File
-import java.util.UUID
-import java.util.concurrent.Executors
 
 class CameraShareActivity : ComponentActivity() {
-    private lateinit var preview: PreviewView
     private lateinit var status: TextView
-    private lateinit var toggle: Button
-    private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) bindCamera() else status.text = "Camera permission denied. Sharing is disabled."
+    private lateinit var startButton: Button
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val cameraGranted = results[Manifest.permission.CAMERA] == true ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (cameraGranted) startBackgroundService()
+        else status.text = "Camera permission is required. Sharing has not started."
     }
-    private val handler = Handler(Looper.getMainLooper())
-    private val executor = Executors.newSingleThreadExecutor()
-    private var capture: ImageCapture? = null
-    private var active = false
-    private var path: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16, 24, 16, 16) }
-        root.addView(TextView(this).apply { text = "OWNER-CONTROLLED CAMERA SHARING"; textSize = 20f })
-        status = TextView(this).apply { text = "Grant camera permission, then tap Start. Images are not sent before you start."; setPadding(0, 12, 0, 12) }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 32, 24, 24)
+        }
+        root.addView(TextView(this).apply {
+            text = "OWNER-CONTROLLED BACKGROUND CAMERA"
+            textSize = 20f
+        })
+        status = TextView(this).apply {
+            text = "Tap Start to activate the camera. A persistent Android notification will remain visible while sharing."
+            textSize = 16f
+            setPadding(0, 20, 0, 20)
+        }
         root.addView(status)
-        preview = PreviewView(this)
-        root.addView(preview, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        toggle = Button(this).apply { text = "Start camera sharing"; isEnabled = false; setOnClickListener { if (active) stopSharing() else startSharing() } }
-        root.addView(toggle)
-        root.addView(Button(this).apply { text = "Close"; setOnClickListener { finish() } })
-        setContentView(root)
-        val user = FirebaseAuth.getInstance().currentUser
-        if (user == null) { status.text = "Sign in first."; return }
-        val prefs = getSharedPreferences("samuel_remote_manager", Context.MODE_PRIVATE)
-        val id = prefs.getString("device_id", null) ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id", it).apply() }
-        path = "users/${user.uid}/devices/$id/camera"
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) bindCamera()
-        else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-    }
-
-    private fun bindCamera() {
-        val future = ProcessCameraProvider.getInstance(this)
-        future.addListener({
-            try {
-                val provider = future.get()
-                val previewUseCase = Preview.Builder().build().also { it.setSurfaceProvider(preview.surfaceProvider) }
-                val imageCaptureUseCase = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).setJpegQuality(50).build()
-                capture = imageCaptureUseCase
-                provider.unbindAll()
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, previewUseCase, imageCaptureUseCase)
-                status.text = "Local preview ready. Tap Start to send periodic still images to your signed-in website."
-                toggle.isEnabled = true
-            } catch (e: Exception) { status.text = "Camera unavailable: ${e.localizedMessage}" }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun startSharing() {
-        active = true
-        toggle.text = "Stop camera sharing"
-        status.text = "Sharing is ON. Keep this screen open; the Android camera indicator remains visible."
-        sendFrame()
-    }
-
-    private fun sendFrame() {
-        if (!active) return
-        val file = File(cacheDir, "shared-camera.jpg")
-        val options = ImageCapture.OutputFileOptions.Builder(file).build()
-        capture?.takePicture(options, executor, object : ImageCapture.OnImageSavedCallback {
-            override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-                try {
-                    val encoded = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
-                    runOnUiThread {
-                        if (active) {
-                            val ref = FirebaseDatabase.getInstance().reference.child(path!!)
-                            ref.child("frame").setValue(encoded)
-                            ref.child("updatedAt").setValue(System.currentTimeMillis())
-                            ref.child("active").setValue(true)
-                            status.text = "Camera snapshots sharing · " + java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-                        }
-                    }
-                } catch (_: Exception) { }
-                file.delete()
-                handler.postDelayed({ sendFrame() }, 3000)
-            }
-            override fun onError(error: ImageCaptureException) {
-                runOnUiThread { status.text = "Capture failed: ${error.message}" }
-                handler.postDelayed({ sendFrame() }, 4000)
+        startButton = Button(this).apply {
+            text = "Start Background Camera"
+            setOnClickListener { requestAndStart() }
+        }
+        root.addView(startButton)
+        root.addView(Button(this).apply {
+            text = "Stop Camera Sharing"
+            setOnClickListener {
+                stopService(Intent(this@CameraShareActivity, CameraShareService::class.java))
+                status.text = "Camera sharing stop requested."
             }
         })
+        root.addView(Button(this).apply {
+            text = "Close"
+            setOnClickListener { finish() }
+        })
+        setContentView(root)
     }
 
-    private fun stopSharing() {
-        active = false
-        handler.removeCallbacksAndMessages(null)
-        path?.let {
-            val cameraRef = FirebaseDatabase.getInstance().reference.child(it)
-            cameraRef.child("active").setValue(false)
-            cameraRef.child("frame").removeValue()
+    private fun requestAndStart() {
+        val needed = mutableListOf(Manifest.permission.CAMERA)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.POST_NOTIFICATIONS)
         }
-        toggle.text = "Start camera sharing"
-        status.text = "Camera sharing stopped."
+        val missing = needed.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) startBackgroundService()
+        else permissionLauncher.launch(missing.toTypedArray())
     }
 
-    override fun onDestroy() {
-        stopSharing()
-        executor.shutdown()
-        super.onDestroy()
+    private fun startBackgroundService() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            status.text = "Camera permission is not granted."
+            return
+        }
+        val intent = Intent(this, CameraShareService::class.java).apply {
+            action = CameraShareService.ACTION_START
+        }
+        ContextCompat.startForegroundService(this, intent)
+        status.text = "Background camera started. Keep the visible camera notification active; use it or this screen to stop sharing."
+        startButton.isEnabled = false
     }
 }
