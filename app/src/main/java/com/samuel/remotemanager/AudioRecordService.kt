@@ -53,7 +53,7 @@ class AudioRecordService : LifecycleService() {
         createChannel()
         try {
             val notification=buildNotification()
-            if(Build.VERSION.SDK_INT>=29) startForeground(NOTIFICATION_ID,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            if(Build.VERSION.SDK_INT>=30) startForeground(NOTIFICATION_ID,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
             else startForeground(NOTIFICATION_ID,notification)
             output=File(cacheDir,"audio-${System.currentTimeMillis()}.m4a")
             val media=if(Build.VERSION.SDK_INT>=31) MediaRecorder(this) else MediaRecorder()
