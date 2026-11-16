@@ -29,3 +29,15 @@ The included rules restrict each signed-in account to its own `users/{uid}` data
 
 ## Build
 GitHub Actions builds a debug APK on pushes to `main`. Open the repository's Actions tab to download the `Samuel-Remote-Manager-APK` artifact after a successful run.
+
+
+## Deploy Firebase Storage rules automatically
+
+The repository includes `firebase.json` and a manual GitHub Actions workflow named **Deploy Samuel Remote Manager Firebase Storage rules**. Before running it:
+
+1. In Firebase Console for project `samuel-remote-manager`, create/enable the default Cloud Storage bucket. Select a location carefully; it cannot easily be changed later.
+2. In Google Cloud IAM, create a dedicated service account for deployment and grant it the Firebase Rules Admin role (`roles/firebaserules.admin`). Follow your organisation's security policy for service-account keys.
+3. In GitHub repository Settings → Secrets and variables → Actions, add a repository secret named `FIREBASE_SERVICE_ACCOUNT_SAMUEL_REMOTE_MANAGER` containing the service-account JSON key. Never paste this key into source code, issues, or chat.
+4. Open Actions → **Deploy Samuel Remote Manager Firebase Storage rules** → Run workflow.
+
+The workflow deploys only `storage.rules`. It does not change Realtime Database rules or make recordings public. If you do not want to create a service-account key, publish `storage.rules` manually in Firebase Console → Storage → Rules instead.
