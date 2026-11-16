@@ -6,11 +6,12 @@
         ".write": "auth != null && auth.uid === $uid",
         "devices": {
           "$deviceId": {
+            "audioArchive": {
+              ".indexOn": ["capturedAt"]
+            },
             "camera": {
               "archive": {
-                ".indexOn": [
-                  "capturedAt"
-                ]
+                ".indexOn": ["capturedAt"]
               }
             }
           }
