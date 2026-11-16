@@ -113,27 +113,47 @@ class CameraShareService : LifecycleService() {
         capture.takePicture(options, executor, object : ImageCapture.OnImageSavedCallback {
             override fun onImageSaved(result: ImageCapture.OutputFileResults) {
                 try {
-                    val encoded = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
-                    val ref = FirebaseDatabase.getInstance().reference.child(databasePath ?: return)
+                    val bytes = file.readBytes()
+                    if (bytes.isEmpty()) throw IllegalStateException("Camera returned an empty image")
+                    val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    val path = databasePath ?: throw IllegalStateException("Device archive path is unavailable")
+                    val ref = FirebaseDatabase.getInstance().reference.child(path)
                     val capturedAt = System.currentTimeMillis()
-                    ref.child("frame").setValue(encoded)
-                    ref.child("updatedAt").setValue(capturedAt)
-                    ref.child("active").setValue(true)
-                    // Retain the 30 newest snapshots from this owner-started sharing session.
                     val archive = ref.child("archive")
-                    archive.push().setValue(mapOf("frame" to encoded, "capturedAt" to capturedAt))
-                        .addOnSuccessListener {
-                            archive.orderByChild("capturedAt").limitToLast(30).get()
-                                .addOnSuccessListener { recent ->
-                                    val keep = recent.children.mapNotNull { it.key }.toSet()
-                                    archive.get().addOnSuccessListener { all ->
-                                        all.children.forEach { oldItem ->
-                                            if (oldItem.key !in keep) oldItem.ref.removeValue()
-                                        }
+                    val archiveKey = archive.push().key
+                        ?: throw IllegalStateException("Could not create a snapshot archive ID")
+
+                    // Save the archive entry first. Only report a successful cloud snapshot
+                    // after Realtime Database confirms the write.
+                    archive.child(archiveKey).setValue(
+                        mapOf(
+                            "frame" to encoded,
+                            "capturedAt" to capturedAt,
+                            "contentType" to "image/jpeg",
+                            "sizeBytes" to bytes.size
+                        )
+                    ).addOnSuccessListener {
+                        if (!running) return@addOnSuccessListener
+                        ref.child("frame").setValue(encoded)
+                        ref.child("updatedAt").setValue(capturedAt)
+                        ref.child("active").setValue(true)
+                        updateNotification("Camera active · snapshot saved to cloud")
+
+                        // Keep only the 30 newest snapshots for this device.
+                        archive.orderByChild("capturedAt").limitToLast(30).get()
+                            .addOnSuccessListener { recent ->
+                                val keep = recent.children.mapNotNull { it.key }.toSet()
+                                archive.get().addOnSuccessListener { all ->
+                                    all.children.forEach { item ->
+                                        if (item.key !in keep) item.ref.removeValue()
                                     }
                                 }
-                        }
+                            }
+                    }.addOnFailureListener {
+                        if (running) updateNotification("Cloud snapshot save failed · check internet and Firebase rules")
+                    }
                 } catch (_: Exception) {
+                    if (running) updateNotification("Snapshot could not be saved · check connection")
                 } finally {
                     file.delete()
                 }
@@ -141,6 +161,7 @@ class CameraShareService : LifecycleService() {
             }
 
             override fun onError(error: ImageCaptureException) {
+                if (running) updateNotification("Camera capture failed · sharing will retry")
                 handler.postDelayed({ captureNextFrame() }, 7000)
             }
         })
