@@ -21,42 +21,55 @@ import java.util.UUID
 
 class AudioRecordService : LifecycleService() {
     companion object {
-        const val ACTION_START="com.samuel.remotemanager.AUDIO_START"
-        const val ACTION_STOP="com.samuel.remotemanager.AUDIO_STOP"
-        private const val CHANNEL="audio_recording"
-        private const val NOTIFICATION_ID=4201
-        private const val MAX_ARCHIVE_BYTES=6L*1024L*1024L
+        const val ACTION_START = "com.samuel.remotemanager.AUDIO_START"
+        const val ACTION_STOP = "com.samuel.remotemanager.AUDIO_STOP"
+        private const val CHANNEL = "audio_recording"
+        private const val NOTIFICATION_ID = 4201
+        private const val MAX_ARCHIVE_BYTES = 6L * 1024L * 1024L
     }
-    private var recorder: MediaRecorder?=null
-    private var output: File?=null
-    private var startedAt=0L
-    private var uid: String?=null
-    private var deviceId: String?=null
-    private var stopping=false
+
+    private var recorder: MediaRecorder? = null
+    private var output: File? = null
+    private var startedAt = 0L
+    private var uid: String? = null
+    private var deviceId: String? = null
+    private var stopping = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        super.onStartCommand(intent,flags,startId)
-        when(intent?.action) {
+        super.onStartCommand(intent, flags, startId)
+        when (intent?.action) {
             ACTION_STOP -> stopAndUpload()
             ACTION_START, null -> startRecording(startId)
         }
         return START_NOT_STICKY
     }
-    private fun startRecording(startId:Int) {
-        if(recorder!=null) return
-        if(ContextCompat.checkSelfPermission(this,Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED) { stopSelf(startId); return }
-        val user=FirebaseAuth.getInstance().currentUser
-        if(user==null) { stopSelf(startId); return }
-        uid=user.uid
-        val prefs=getSharedPreferences("samuel_remote_manager",MODE_PRIVATE)
-        deviceId=prefs.getString("device_id",null) ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id",it).apply() }
+
+    private fun startRecording(startId: Int) {
+        if (recorder != null) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            stopSelf(startId)
+            return
+        }
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user == null) {
+            stopSelf(startId)
+            return
+        }
+        uid = user.uid
+        val prefs = getSharedPreferences("samuel_remote_manager", MODE_PRIVATE)
+        deviceId = prefs.getString("device_id", null)
+            ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id", it).apply() }
         createChannel()
         try {
-            val notification=buildNotification()
-            if(Build.VERSION.SDK_INT>=30) startForeground(NOTIFICATION_ID,notification,ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-            else startForeground(NOTIFICATION_ID,notification)
-            output=File(cacheDir,"audio-${System.currentTimeMillis()}.m4a")
-            val media=if(Build.VERSION.SDK_INT>=31) MediaRecorder(this) else MediaRecorder()
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= 30) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            // Keep unfinished recordings in persistent app storage rather than the evictable cache directory.
+            output = File(filesDir, "audio-${System.currentTimeMillis()}.m4a")
+            val media = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this) else MediaRecorder()
             media.setAudioSource(MediaRecorder.AudioSource.MIC)
             media.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             media.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -65,38 +78,46 @@ class AudioRecordService : LifecycleService() {
             media.setOutputFile(output!!.absolutePath)
             media.prepare()
             media.start()
-            recorder=media
-            startedAt=System.currentTimeMillis()
-            getDatabaseRef()?.child("recording")?.setValue(mapOf("active" to true,"startedAt" to startedAt))
-        } catch (_:Exception) {
-            try { recorder?.release() } catch (_:Exception) {}
-            recorder=null
+            recorder = media
+            startedAt = System.currentTimeMillis()
+            getDatabaseRef()?.child("recording")?.setValue(mapOf("active" to true, "startedAt" to startedAt))
+        } catch (_: Exception) {
+            try { recorder?.release() } catch (_: Exception) { }
+            recorder = null
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf(startId)
         }
     }
+
     private fun stopAndUpload() {
-        if(stopping) return
-        stopping=true
-        val media=recorder
-        recorder=null
-        try { media?.stop() } catch (_:Exception) {}
-        try { media?.reset(); media?.release() } catch (_:Exception) {}
-        val file=output
-        val start=startedAt
-        val duration=(System.currentTimeMillis()-start).coerceAtLeast(0L)
-        getDatabaseRef()?.child("recording")?.setValue(mapOf("active" to false,"stoppedAt" to System.currentTimeMillis()))
-        if(file==null || !file.exists() || file.length()==0L || uid==null || deviceId==null) {
-            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return
+        if (stopping) return
+        stopping = true
+        val media = recorder
+        recorder = null
+        try { media?.stop() } catch (_: Exception) { }
+        try { media?.reset(); media?.release() } catch (_: Exception) { }
+        val file = output
+        val start = startedAt
+        val duration = (System.currentTimeMillis() - start).coerceAtLeast(0L)
+        getDatabaseRef()?.child("recording")?.setValue(mapOf("active" to false, "stoppedAt" to System.currentTimeMillis()))
+        if (file == null || !file.exists() || file.length() == 0L || uid == null || deviceId == null) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
         }
-        if(file.length()>MAX_ARCHIVE_BYTES) {
-            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,buildNotification("Recording exceeds the 6 MB archive limit and was not uploaded."))
-            stopForeground(STOP_FOREGROUND_REMOVE); file.delete(); stopSelf(); return
+        if (file.length() > MAX_ARCHIVE_BYTES) {
+            getSystemService(NotificationManager::class.java).notify(
+                NOTIFICATION_ID,
+                buildNotification("Recording exceeds the 6 MB cloud archive limit. The file was kept on this phone.")
+            )
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
         }
         try {
-            val archiveId=UUID.randomUUID().toString()
-            val encoded=Base64.encodeToString(file.readBytes(),Base64.NO_WRAP)
-            val item=mapOf(
+            val archiveId = UUID.randomUUID().toString()
+            val encoded = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
+            val item = mapOf(
                 "capturedAt" to start,
                 "uploadedAt" to System.currentTimeMillis(),
                 "durationMs" to duration,
@@ -107,29 +128,66 @@ class AudioRecordService : LifecycleService() {
             getDatabaseRef()?.child("audioArchive")?.child(archiveId)?.setValue(item)
                 ?.addOnSuccessListener {
                     file.delete()
-                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
                 }?.addOnFailureListener {
-                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,buildNotification("Cloud save failed. Recording remains temporarily on this phone."))
-                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
-                } ?: run { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
-        } catch (_:Exception) {
-            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID,buildNotification("Could not prepare recording for cloud archive."))
-            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+                    getSystemService(NotificationManager::class.java).notify(
+                        NOTIFICATION_ID,
+                        buildNotification("Cloud upload failed. Your recording was kept in this app's storage.")
+                    )
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                } ?: run {
+                    getSystemService(NotificationManager::class.java).notify(
+                        NOTIFICATION_ID,
+                        buildNotification("Cloud connection unavailable. Your recording was kept in this app's storage.")
+                    )
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+        } catch (_: Exception) {
+            getSystemService(NotificationManager::class.java).notify(
+                NOTIFICATION_ID,
+                buildNotification("Could not upload recording. The file was kept in this app's storage.")
+            )
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
     }
-    private fun getDatabaseRef() = if(uid!=null && deviceId!=null) FirebaseDatabase.getInstance().reference.child("users").child(uid!!).child("devices").child(deviceId!!) else null
+
+    private fun getDatabaseRef() =
+        if (uid != null && deviceId != null) FirebaseDatabase.getInstance().reference
+            .child("users").child(uid!!).child("devices").child(deviceId!!) else null
+
     private fun createChannel() {
-        if(Build.VERSION.SDK_INT>=26) getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel(CHANNEL,"Audio recording",NotificationManager.IMPORTANCE_LOW))
+        if (Build.VERSION.SDK_INT >= 26) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL, "Audio recording", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
     }
-    private fun buildNotification(message:String="Microphone recording is active"): Notification {
-        val stop=PendingIntent.getService(this,4202,Intent(this,AudioRecordService::class.java).setAction(ACTION_STOP),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val open=PendingIntent.getActivity(this,4203,Intent(this,AudioRecordActivity::class.java),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        return NotificationCompat.Builder(this,CHANNEL).setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("Samuel Remote Manager · MICROPHONE ON").setContentText(message).setContentIntent(open)
-            .setOngoing(true).addAction(android.R.drawable.ic_media_pause,"Stop & save",stop).build()
+
+    private fun buildNotification(message: String = "Microphone recording is active"): Notification {
+        val stop = PendingIntent.getService(
+            this, 4202, Intent(this, AudioRecordService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val open = PendingIntent.getActivity(
+            this, 4203, Intent(this, AudioRecordActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle("Samuel Remote Manager · MICROPHONE ON")
+            .setContentText(message)
+            .setContentIntent(open)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_media_pause, "Stop & save", stop)
+            .build()
     }
+
     override fun onDestroy() {
-        if(recorder!=null && !stopping) stopAndUpload()
+        if (recorder != null && !stopping) stopAndUpload()
         super.onDestroy()
     }
 }
