@@ -30,6 +30,9 @@ class MainActivity : Activity() {
     private var remoteCommandRef: DatabaseReference? = null
     private var remoteCommandListener: ValueEventListener? = null
     private var lastPromptedRequestId: String? = null
+    private var audioCommandRef: DatabaseReference? = null
+    private var audioCommandListener: ValueEventListener? = null
+    private var lastPromptedAudioRequestId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,9 +42,11 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         listenForRemoteStartRequest()
+        listenForRemoteAudioRequest()
     }
     override fun onPause() {
         stopRemoteCommandListener()
+        stopRemoteAudioCommandListener()
         super.onPause()
     }
     override fun onNewIntent(intent: Intent) {
@@ -84,6 +89,47 @@ class MainActivity : Activity() {
         }
         remoteCommandRef?.addValueEventListener(remoteCommandListener!!)
     }
+
+    private fun listenForRemoteAudioRequest() {
+        stopRemoteAudioCommandListener()
+        val user = auth.currentUser ?: return
+        val prefs = getSharedPreferences("samuel_remote_manager", MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+            ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id", it).apply() }
+        audioCommandRef = FirebaseDatabase.getInstance().reference.child("users").child(user.uid)
+            .child("devices").child(deviceId).child("remoteCommands").child("startAudio")
+        audioCommandListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val command = snapshot.value as? Map<*, *> ?: return
+                if (command["status"] != "pending") return
+                val requestId = command["requestId"]?.toString() ?: return
+                if (requestId == lastPromptedAudioRequestId || isFinishing || isDestroyed) return
+                lastPromptedAudioRequestId = requestId
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Remote audio recording request")
+                    .setMessage("Your dashboard requests an audio recording. Nothing starts unless you approve and tap Start. The microphone will be visibly active with an ongoing notification.")
+                    .setNegativeButton("Decline") { _, _ -> audioCommandRef?.updateChildren(mapOf("status" to "declined", "respondedAt" to System.currentTimeMillis())) }
+                    .setPositiveButton("Review on phone") { _, _ ->
+                        audioCommandRef?.updateChildren(mapOf("status" to "accepted", "respondedAt" to System.currentTimeMillis()))
+                        startActivity(Intent(this@MainActivity, AudioRecordActivity::class.java))
+                    }
+                    .setOnCancelListener { audioCommandRef?.updateChildren(mapOf("status" to "declined", "respondedAt" to System.currentTimeMillis())) }
+                    .show()
+            }
+            override fun onCancelled(error: DatabaseError) {
+                Toast.makeText(this@MainActivity, "Audio request check failed: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+        audioCommandRef?.addValueEventListener(audioCommandListener!!)
+    }
+    private fun stopRemoteAudioCommandListener() {
+        val ref = audioCommandRef
+        val listener = audioCommandListener
+        if (ref != null && listener != null) ref.removeEventListener(listener)
+        audioCommandRef = null
+        audioCommandListener = null
+    }
+
     private fun stopRemoteCommandListener() {
         val ref = remoteCommandRef
         val listener = remoteCommandListener
@@ -127,9 +173,12 @@ class MainActivity : Activity() {
             root.addView(TextView(this).apply { text="To share a received message: open it in Messages, choose Share, select Samuel Remote Manager, review it, then confirm."; textSize=13f; setPadding(0,8,0,12) })
             root.addView(Button(this).apply { text="Start sharing my location"; setOnClickListener { requestLocationAndStart() } })
             root.addView(Button(this).apply { text="Open camera sharing"; setOnClickListener { startActivity(Intent(this@MainActivity,CameraShareActivity::class.java)) } })
+            root.addView(Button(this).apply { text="Open audio recorder"; setOnClickListener { startActivity(Intent(this@MainActivity,AudioRecordActivity::class.java)) } })
             root.addView(Button(this).apply { text="Stop location sharing"; setOnClickListener { stopService(Intent(this@MainActivity,LocationShareService::class.java)); status.text="Location sharing stopped." } })
             root.addView(Button(this).apply { text="Sign out"; setOnClickListener {
                 stopRemoteCommandListener()
+                stopRemoteAudioCommandListener()
+                stopService(Intent(this@MainActivity,AudioRecordService::class.java))
                 stopService(Intent(this@MainActivity,LocationShareService::class.java)); stopService(Intent(this@MainActivity,CameraShareService::class.java)); auth.signOut(); showScreen()
             } })
         }
@@ -139,7 +188,7 @@ class MainActivity : Activity() {
         val e=email.text.toString().trim(); val p=password.text.toString()
         if(e.isBlank()||p.length<6){Toast.makeText(this,"Enter a valid email and a password of at least 6 characters.",Toast.LENGTH_LONG).show();return}
         val task=if(create) auth.createUserWithEmailAndPassword(e,p) else auth.signInWithEmailAndPassword(e,p)
-        task.addOnSuccessListener { Toast.makeText(this,"Signed in successfully.",Toast.LENGTH_SHORT).show();showScreen();listenForRemoteStartRequest() }
+        task.addOnSuccessListener { Toast.makeText(this,"Signed in successfully.",Toast.LENGTH_SHORT).show();showScreen();listenForRemoteStartRequest();listenForRemoteAudioRequest() }
             .addOnFailureListener { Toast.makeText(this,it.localizedMessage?:"Authentication failed.",Toast.LENGTH_LONG).show() }
     }
     private fun requestLocationAndStart() {
