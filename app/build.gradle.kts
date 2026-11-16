@@ -1,8 +1,12 @@
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.gms.google-services")
+}
+
+// Firebase configuration is optional during the initial build.
+// Add app/google-services.json from your Firebase project to enable it.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 android {
