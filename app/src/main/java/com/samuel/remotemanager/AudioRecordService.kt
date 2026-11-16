@@ -16,6 +16,7 @@ import androidx.lifecycle.LifecycleService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
 import java.io.File
 import java.util.UUID
 
@@ -91,7 +92,7 @@ class AudioRecordService : LifecycleService() {
         val archiveId=UUID.randomUUID().toString()
         val storagePath="users/${uid}/devices/${deviceId}/audioArchive/${archiveId}.m4a"
         val storageRef=FirebaseStorage.getInstance().reference.child(storagePath)
-        storageRef.putFile(android.net.Uri.fromFile(file))
+        storageRef.putFile(android.net.Uri.fromFile(file), StorageMetadata.Builder().setContentType("audio/mp4").build())
             .continueWithTask { task ->
                 if(!task.isSuccessful) throw task.exception ?: IllegalStateException("Upload failed")
                 storageRef.metadata
