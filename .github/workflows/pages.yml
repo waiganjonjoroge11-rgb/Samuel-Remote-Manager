@@ -33,17 +33,31 @@ jobs:
           mkdir -p _site
           cp index.html messages.html _site/
           touch _site/.nojekyll
+      - name: Find latest successful Android build
+        id: android-build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            RUN_ID="${{ github.event.workflow_run.id }}"
+          else
+            RUN_ID="$(gh run list --workflow android.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "No successful Android APK build was found." >&2
+            exit 1
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
       - name: Download APK from successful Android build
-        if: github.event_name == 'workflow_run'
         uses: actions/download-artifact@v4
         with:
           name: Samuel-Remote-Manager-APK
           path: _site
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ steps.android-build.outputs.run_id }}
       - name: Publish APK with stable public filename
-        if: github.event_name == 'workflow_run'
         run: cp _site/app-debug.apk _site/Samuel-Remote-Manager.apk
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
