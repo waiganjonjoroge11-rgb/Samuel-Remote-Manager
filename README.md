@@ -7,7 +7,7 @@ Consent-based Android device status and sharing dashboard.
 - Firebase Email/Password authentication on Android and the website.
 - Owner-started location sharing with a persistent Android notification.
 - Owner-approved camera sharing: the phone owner must approve the request, grant camera permission, and tap **Start Camera Sharing**. The foreground-service notification stays visible. The website shows the current still image and keeps up to 30 archived snapshots.
-- Owner-approved audio recording: the phone owner must approve the request, grant microphone permission, and tap **Start audio recording**. A persistent microphone notification remains visible. Recordings are saved to the owner's private Firebase Realtime Database archive; each recording is limited to 6 MB.
+- Owner-approved audio recording: the phone owner must approve the on-phone dashboard prompt (or tap **Start audio recording** locally), grant microphone permission if Android asks, and a persistent microphone notification remains visible. An approved remote request opens the recorder and starts capture only after that on-phone approval. Recordings are saved to the owner's private Firebase Realtime Database archive; each recording is limited to 6 MB.
 - SMS requests are opened in the phone's SMS app. The phone owner must review and press **Send**. Received texts appear on the dashboard only after the owner explicitly shares them.
 - The owner can stop location, camera, and audio sharing on the phone.
 
