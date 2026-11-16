@@ -13,6 +13,15 @@ android {
     namespace = "com.samuel.remotemanager"
     compileSdk = 36
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
     defaultConfig {
         applicationId = "com.samuel.remotemanager"
         minSdk = 26
