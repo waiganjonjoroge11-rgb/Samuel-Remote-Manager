@@ -78,6 +78,7 @@ class MainActivity : Activity() {
                 text = "Sign out"
                 setOnClickListener {
                     stopService(Intent(this@MainActivity, LocationShareService::class.java))
+                    stopService(Intent(this@MainActivity, CameraShareService::class.java))
                     auth.signOut()
                     showScreen()
                 }
