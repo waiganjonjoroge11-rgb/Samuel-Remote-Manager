@@ -115,9 +115,24 @@ class CameraShareService : LifecycleService() {
                 try {
                     val encoded = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
                     val ref = FirebaseDatabase.getInstance().reference.child(databasePath ?: return)
+                    val capturedAt = System.currentTimeMillis()
                     ref.child("frame").setValue(encoded)
-                    ref.child("updatedAt").setValue(System.currentTimeMillis())
+                    ref.child("updatedAt").setValue(capturedAt)
                     ref.child("active").setValue(true)
+                    // Retain the 30 newest snapshots from this owner-started sharing session.
+                    val archive = ref.child("archive")
+                    archive.push().setValue(mapOf("frame" to encoded, "capturedAt" to capturedAt))
+                        .addOnSuccessListener {
+                            archive.orderByChild("capturedAt").limitToLast(30).get()
+                                .addOnSuccessListener { recent ->
+                                    val keep = recent.children.mapNotNull { it.key }.toSet()
+                                    archive.get().addOnSuccessListener { all ->
+                                        all.children.forEach { oldItem ->
+                                            if (oldItem.key !in keep) oldItem.ref.removeValue()
+                                        }
+                                    }
+                                }
+                        }
                 } catch (_: Exception) {
                 } finally {
                     file.delete()
