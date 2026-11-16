@@ -2,6 +2,7 @@ package com.samuel.remotemanager
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -14,21 +15,81 @@ import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import java.util.UUID
 
 class MainActivity : Activity() {
     private val auth by lazy { FirebaseAuth.getInstance() }
     private lateinit var status: TextView
     private lateinit var email: EditText
     private lateinit var password: EditText
+    private var remoteCommandRef: DatabaseReference? = null
+    private var remoteCommandListener: ValueEventListener? = null
+    private var lastPromptedRequestId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         showScreen()
         handleSharedText(intent)
     }
+    override fun onResume() {
+        super.onResume()
+        listenForRemoteStartRequest()
+    }
+    override fun onPause() {
+        stopRemoteCommandListener()
+        super.onPause()
+    }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent); handleSharedText(intent)
+    }
+    private fun listenForRemoteStartRequest() {
+        stopRemoteCommandListener()
+        val user = auth.currentUser ?: return
+        val prefs = getSharedPreferences("samuel_remote_manager", MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+            ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id", it).apply() }
+        remoteCommandRef = FirebaseDatabase.getInstance().reference
+            .child("users").child(user.uid).child("devices").child(deviceId)
+            .child("remoteCommands").child("startCamera")
+        remoteCommandListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val command = snapshot.value as? Map<*, *> ?: return
+                if (command["status"] != "pending") return
+                val requestId = command["requestId"]?.toString() ?: return
+                if (requestId == lastPromptedRequestId || isFinishing || isDestroyed) return
+                lastPromptedRequestId = requestId
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Remote camera request")
+                    .setMessage("Your dashboard is asking to open the camera-sharing screen. Nothing will be captured unless you approve and tap Start. Camera permission and a visible notification are required.")
+                    .setNegativeButton("Decline") { _, _ ->
+                        remoteCommandRef?.updateChildren(mapOf("status" to "declined", "respondedAt" to System.currentTimeMillis()))
+                    }
+                    .setPositiveButton("Review request") { _, _ ->
+                        remoteCommandRef?.updateChildren(mapOf("status" to "accepted", "respondedAt" to System.currentTimeMillis()))
+                        startActivity(Intent(this@MainActivity, CameraShareActivity::class.java))
+                    }
+                    .setOnCancelListener {
+                        remoteCommandRef?.updateChildren(mapOf("status" to "declined", "respondedAt" to System.currentTimeMillis()))
+                    }
+                    .show()
+            }
+            override fun onCancelled(error: DatabaseError) {
+                Toast.makeText(this@MainActivity, "Remote request check failed: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+        remoteCommandRef?.addValueEventListener(remoteCommandListener!!)
+    }
+    private fun stopRemoteCommandListener() {
+        val ref = remoteCommandRef
+        val listener = remoteCommandListener
+        if (ref != null && listener != null) ref.removeEventListener(listener)
+        remoteCommandRef = null
+        remoteCommandListener = null
     }
     private fun handleSharedText(source: Intent?) {
         if (source?.action != Intent.ACTION_SEND || source.type != "text/plain") return
@@ -37,8 +98,8 @@ class MainActivity : Activity() {
         if (auth.currentUser == null) {
             Toast.makeText(this, "Sign in first, then share the selected message again.", Toast.LENGTH_LONG).show(); return
         }
-        android.app.AlertDialog.Builder(this).setTitle("Share selected message")
-            .setMessage("Send this text to your own dashboard?\n\n$shared")
+        AlertDialog.Builder(this).setTitle("Share selected message")
+            .setMessage("Send this text to your own dashboard?\\n\\n$shared")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Share") { _, _ ->
                 val uid = auth.currentUser?.uid ?: return@setPositiveButton
@@ -52,7 +113,7 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(28,36,28,28) }
         root.addView(TextView(this).apply { text="SAMUEL REMOTE MANAGER"; textSize=24f; gravity=Gravity.CENTER })
         status = TextView(this).apply {
-            text=if(auth.currentUser==null) "Sign in on this phone and on your web dashboard using the same account." else "Signed in: ${auth.currentUser?.email}"
+            text=if(auth.currentUser==null) "Sign in on this phone and on your web dashboard using the same account." else "Signed in: ${auth.currentUser?.email}. Keep this app open to receive dashboard requests."
             textSize=15f; gravity=Gravity.CENTER; setPadding(0,20,0,20)
         }
         root.addView(status)
@@ -68,6 +129,7 @@ class MainActivity : Activity() {
             root.addView(Button(this).apply { text="Open camera sharing"; setOnClickListener { startActivity(Intent(this@MainActivity,CameraShareActivity::class.java)) } })
             root.addView(Button(this).apply { text="Stop location sharing"; setOnClickListener { stopService(Intent(this@MainActivity,LocationShareService::class.java)); status.text="Location sharing stopped." } })
             root.addView(Button(this).apply { text="Sign out"; setOnClickListener {
+                stopRemoteCommandListener()
                 stopService(Intent(this@MainActivity,LocationShareService::class.java)); stopService(Intent(this@MainActivity,CameraShareService::class.java)); auth.signOut(); showScreen()
             } })
         }
@@ -77,7 +139,7 @@ class MainActivity : Activity() {
         val e=email.text.toString().trim(); val p=password.text.toString()
         if(e.isBlank()||p.length<6){Toast.makeText(this,"Enter a valid email and a password of at least 6 characters.",Toast.LENGTH_LONG).show();return}
         val task=if(create) auth.createUserWithEmailAndPassword(e,p) else auth.signInWithEmailAndPassword(e,p)
-        task.addOnSuccessListener { Toast.makeText(this,"Signed in successfully.",Toast.LENGTH_SHORT).show();showScreen() }
+        task.addOnSuccessListener { Toast.makeText(this,"Signed in successfully.",Toast.LENGTH_SHORT).show();showScreen();listenForRemoteStartRequest() }
             .addOnFailureListener { Toast.makeText(this,it.localizedMessage?:"Authentication failed.",Toast.LENGTH_LONG).show() }
     }
     private fun requestLocationAndStart() {
