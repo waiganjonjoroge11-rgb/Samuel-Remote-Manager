@@ -170,6 +170,7 @@ class MainActivity : Activity() {
             root.addView(Button(this).apply { text="Create account"; setOnClickListener { authenticate(true) } })
             root.addView(Button(this).apply { text="Sign in"; setOnClickListener { authenticate(false) } })
         } else {
+            publishDevicePresence()
             root.addView(Button(this).apply { text="Open SMS requests"; setOnClickListener { startActivity(Intent(this@MainActivity,SmsRequestsActivity::class.java)) } })
             root.addView(TextView(this).apply { text="To share a received message: open it in Messages, choose Share, select Samuel Remote Manager, review it, then confirm."; textSize=13f; setPadding(0,8,0,12) })
             root.addView(Button(this).apply { text="Start sharing my location"; setOnClickListener { requestLocationAndStart() } })
@@ -185,6 +186,20 @@ class MainActivity : Activity() {
         }
         setContentView(root)
     }
+    private fun publishDevicePresence() {
+        val user = auth.currentUser ?: return
+        val prefs = getSharedPreferences("samuel_remote_manager", MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+            ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id", it).apply() }
+        val deviceRef = FirebaseDatabase.getInstance().reference
+            .child("users").child(user.uid).child("devices").child(deviceId)
+        deviceRef.updateChildren(mapOf(
+            "deviceName" to (android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL),
+            "lastSeen" to System.currentTimeMillis(),
+            "appOpen" to true
+        ))
+    }
+
     private fun authenticate(create:Boolean) {
         val e=email.text.toString().trim(); val p=password.text.toString()
         if(e.isBlank()||p.length<6){Toast.makeText(this,"Enter a valid email and a password of at least 6 characters.",Toast.LENGTH_LONG).show();return}
