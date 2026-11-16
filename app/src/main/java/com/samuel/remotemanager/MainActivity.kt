@@ -105,7 +105,6 @@ class MainActivity : Activity() {
 
     private fun requestLocationAndStart() {
         val permissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-        if (Build.VERSION.SDK_INT >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
         val missing = permissions.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, missing.toTypedArray(), 700)
@@ -117,8 +116,11 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 700 && grantResults.isNotEmpty() && grantResults.any { it == PackageManager.PERMISSION_GRANTED }) {
-            requestLocationAndStart()
+        if (requestCode == 700 && grantResults.isNotEmpty() &&
+            (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
+            ContextCompat.startForegroundService(this, Intent(this, LocationShareService::class.java))
+            status.text = "Location sharing is ON. A permanent notification will remain visible."
         } else if (requestCode == 700) {
             Toast.makeText(this, "Location permission is required to share location.", Toast.LENGTH_LONG).show()
         }
