@@ -31,8 +31,5 @@ android {
     }
 }
 
-dependencies {
-    implementation(platform("com.google.firebase:firebase-bom:35.2.0"))
-    implementation("com.google.firebase:firebase-database")
-    implementation("com.google.firebase:firebase-auth")
-}
+// Firebase libraries will be added after the Firebase configuration and
+// Kotlin-compatible dependency versions are verified.
