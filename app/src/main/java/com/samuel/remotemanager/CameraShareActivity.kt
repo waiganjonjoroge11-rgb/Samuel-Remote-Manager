@@ -2,6 +2,7 @@ package com.samuel.remotemanager
 
 import android.Manifest
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -18,7 +19,6 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
@@ -30,6 +30,9 @@ class CameraShareActivity : ComponentActivity() {
     private lateinit var preview: PreviewView
     private lateinit var status: TextView
     private lateinit var toggle: Button
+    private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) bindCamera() else status.text = "Camera permission denied. Sharing is disabled."
+    }
     private val handler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private var capture: ImageCapture? = null
@@ -54,7 +57,7 @@ class CameraShareActivity : ComponentActivity() {
         val id = prefs.getString("device_id", null) ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id", it).apply() }
         path = "users/${user.uid}/devices/$id/camera"
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) bindCamera()
-        else ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 811)
+        else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
     private fun bindCamera() {
@@ -71,12 +74,6 @@ class CameraShareActivity : ComponentActivity() {
                 toggle.isEnabled = true
             } catch (e: Exception) { status.text = "Camera unavailable: ${e.localizedMessage}" }
         }, ContextCompat.getMainExecutor(this))
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 811 && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) bindCamera()
-        else status.text = "Camera permission denied. Sharing is disabled."
     }
 
     private fun startSharing() {
