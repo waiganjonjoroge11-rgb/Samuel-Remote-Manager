@@ -15,6 +15,7 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
 </head>
 <body>
 <header><div class="brand"><div class="logo" aria-hidden="true">⌁</div><div><h1>Samuel Remote Manager</h1><p>Authorized Android device management</p></div></div></header>
@@ -29,8 +30,9 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2>Your devices</h2><p class="muted" id="signedInAs"></p></div><button class="secondary" id="signOut">Sign out</button></div>
 <div id="devices"><p class="muted">Waiting for device data…</p></div>
 </section>
+<section class="panel"><h2>Audio recording</h2><p class="notice">Use Request audio recording on a device card. The phone app must be open. The phone owner must approve, grant microphone permission if needed, and tap Start. A persistent microphone notification remains visible. Recordings upload to the owner’s Firebase Storage and appear in the archive below. Silent recording is not supported.</p></section>
 <section class="panel"><h2>Camera sharing</h2><p class="notice">Use “Request camera screen” on a device card to send an owner-confirmed request. The Samuel Remote Manager app must already be open on the phone to receive it. The owner must approve the prompt, grant camera permission if asked, and tap Start. A visible Android notification remains while sharing. This is a periodic still-image feed, not continuous video.</p></section>
-<section class="panel"><h2>Security and privacy</h2><p class="notice">This dashboard displays only data shared by a device signed into the same account. Location sharing must be started by the phone owner in the Android app and remains visible through an ongoing Android notification. This dashboard does not secretly access a camera, microphone, screen, or device controls.</p></section>
+<section class="panel"><h2>Security and privacy</h2><p class="notice">This dashboard displays only data shared by a device signed into the same account. Location sharing must be started by the phone owner in the Android app and remains visible through an ongoing Android notification. Audio and camera capture require visible, on-device owner approval and remain visibly active. This dashboard does not secretly access a camera, microphone, screen, or device controls.</p></section>
 </main>
 <footer>Samuel Remote Manager · Secure device access only</footer>
 <script>
@@ -69,13 +71,29 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
       const map = hasLocation ? '<p><a class="action" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat='+encodeURIComponent(d.latitude)+'&mlon='+encodeURIComponent(d.longitude)+'#map=16/'+encodeURIComponent(d.latitude)+'/'+encodeURIComponent(d.longitude)+'">View on map</a></p>' : "";
       const camera = d.camera || {};
       const cameraView = camera.active && camera.frame ? "<div class=\"metric\" style=\"margin-top:10px\"><small>Live owner-approved camera snapshot</small><img alt=\"Shared camera snapshot\" style=\"display:block;width:100%;border-radius:8px;margin-top:8px\" src=\"data:image/jpeg;base64," + escapeHtml(camera.frame) + "\"><small>Updated: " + escapeHtml(camera.updatedAt ? new Date(camera.updatedAt).toLocaleTimeString() : "recently") + "</small></div>" : "<p class=\"notice\">Camera not currently shared by this phone.</p>";
+      const audioArchive = Object.entries(d.audioArchive || {}).sort((a,b) => Number(b[1].capturedAt || 0) - Number(a[1].capturedAt || 0)).slice(0,50);
+      const audioView = "<div class='metric' style='margin-top:10px'><strong>Cloud audio archive (" + audioArchive.length + ")</strong><div id='audio-archive-" + escapeHtml(id) + "'>" + (audioArchive.length ? audioArchive.map(([key]) => "<div id='audio-item-" + escapeHtml(id) + "-" + escapeHtml(key) + "' class='notice'>Loading recording…</div>").join("") : "<p class='notice'>No cloud recordings yet.</p>") + "</div></div>";
       const archived = Object.entries(camera.archive || {}).sort((a,b) => Number(b[1].capturedAt || 0) - Number(a[1].capturedAt || 0)).slice(0,30);
       const archiveView = "<div class=\"metric\" style=\"margin-top:10px\"><strong>Snapshot archive (" + archived.length + "/30)</strong>" + (archived.length ? archived.map(([key,item]) => "<figure style=\"margin:10px 0;padding:8px;background:#0c192a;border-radius:8px\"><img alt=\"Archived camera snapshot\" loading=\"lazy\" style=\"display:block;width:100%;border-radius:6px\" src=\"data:image/jpeg;base64," + escapeHtml(item.frame || "") + "\"><figcaption class=\"notice\">" + escapeHtml(item.capturedAt ? new Date(item.capturedAt).toLocaleString() : "Date unavailable") + "</figcaption></figure>").join("") : "<p class=\"notice\">No archived snapshots yet. Start camera sharing on the phone to create them.</p>") + "</div>";
       const remote = d.remoteCommands && d.remoteCommands.startCamera ? d.remoteCommands.startCamera : {};
       const remoteStatus = remote.status || "not requested";
       const remoteLabel = remoteStatus === "pending" ? "Request pending — open the app on the phone" : remoteStatus === "accepted" ? "Request accepted — phone owner must tap Start" : remoteStatus === "declined" ? "Last request declined" : "No request sent";
-      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+ (Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Remote camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+archiveView+'<p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
+      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+ (Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Remote camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+archiveView+audioView+'<p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
     }).join("")+'</div>';
+    entries.forEach(([deviceId, device]) => {
+      Object.entries(device.audioArchive || {}).sort((a,b) => Number(b[1].capturedAt || 0) - Number(a[1].capturedAt || 0)).slice(0,50).forEach(async ([archiveId, item]) => {
+        const target = document.getElementById("audio-item-" + deviceId + "-" + archiveId);
+        if (!target || !item.storagePath) return;
+        try {
+          const url = await firebase.storage().ref(item.storagePath).getDownloadURL();
+          if (!target.isConnected) return;
+          target.textContent = (item.capturedAt ? new Date(Number(item.capturedAt)).toLocaleString() : "Date unavailable") + " · " + Math.max(1, Math.round(Number(item.durationMs || 0)/1000)) + " sec";
+          const player = document.createElement("audio");
+          player.controls = true; player.preload = "none"; player.src = url; player.style.display = "block"; player.style.width = "100%";
+          target.appendChild(player);
+        } catch (error) { if (target.isConnected) target.textContent = "Recording unavailable — check Firebase Storage rules."; }
+      });
+    });
   }
   function stopDeviceListener() {
     if (devicesRef && devicesListener) devicesRef.off("value", devicesListener);
@@ -97,19 +115,19 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
     });
     $("signOut").addEventListener("click", () => auth.signOut());
     $("devices").addEventListener("click", async event => {
-      const button = event.target.closest("[data-request-camera]");
+      const button = event.target.closest("[data-request-camera], [data-request-audio]");
       if (!button) return;
       const user = auth.currentUser;
       const deviceId = button.getAttribute("data-device");
       if (!user || !deviceId) return;
+      const isAudio = button.hasAttribute("data-request-audio");
       button.disabled = true;
       try {
         const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(36).slice(2);
-        await database.ref("users/" + user.uid + "/devices/" + deviceId + "/remoteCommands/startCamera").set({
-          action: "open_camera_screen",
-          requestId,
-          status: "pending",
-          requestedAt: Date.now()
+        const command = isAudio ? "startAudio" : "startCamera";
+        await database.ref("users/" + user.uid + "/devices/" + deviceId + "/remoteCommands/" + command).set({
+          action: isAudio ? "request_owner_approved_audio" : "open_camera_screen",
+          requestId, status: "pending", requestedAt: Date.now()
         });
         button.textContent = "Request sent";
       } catch (error) {
