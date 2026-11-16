@@ -55,6 +55,9 @@ class LocationShareService : Service() {
         val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, 15000L)
             .setMinUpdateIntervalMillis(10000L)
             .build()
+        // A service can receive repeated start commands. Remove the previous listener
+        // before registering a new one so the device does not stream duplicate updates.
+        callback?.let { fused.removeLocationUpdates(it) }
         callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val location = result.lastLocation ?: return
