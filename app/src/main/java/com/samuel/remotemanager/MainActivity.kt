@@ -233,6 +233,7 @@ class MainActivity : Activity() {
             root.addView(Button(this).apply { text="Sign out"; setOnClickListener {
                 stopRemoteCommandListener()
                 stopRemoteAudioCommandListener()
+                stopRemoteLensCommandListener()
                 stopService(Intent(this@MainActivity,AudioRecordService::class.java))
                 stopService(Intent(this@MainActivity,LocationShareService::class.java)); stopService(Intent(this@MainActivity,CameraShareService::class.java)); auth.signOut(); showScreen()
             } })
@@ -257,7 +258,13 @@ class MainActivity : Activity() {
         val e=email.text.toString().trim(); val p=password.text.toString()
         if(e.isBlank()||p.length<6){Toast.makeText(this,"Enter a valid email and a password of at least 6 characters.",Toast.LENGTH_LONG).show();return}
         val task=if(create) auth.createUserWithEmailAndPassword(e,p) else auth.signInWithEmailAndPassword(e,p)
-        task.addOnSuccessListener { Toast.makeText(this,"Signed in successfully.",Toast.LENGTH_SHORT).show();showScreen();listenForRemoteStartRequest();listenForRemoteAudioRequest() }
+        task.addOnSuccessListener {
+            Toast.makeText(this,"Signed in successfully.",Toast.LENGTH_SHORT).show()
+            showScreen()
+            listenForRemoteStartRequest()
+            listenForRemoteAudioRequest()
+            listenForRemoteLensRequest()
+        }
             .addOnFailureListener { Toast.makeText(this,it.localizedMessage?:"Authentication failed.",Toast.LENGTH_LONG).show() }
     }
     private fun requestLocationAndStart() {
