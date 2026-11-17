@@ -34,6 +34,10 @@ class CameraShareService : LifecycleService() {
     companion object {
         const val ACTION_START = "com.samuel.remotemanager.CAMERA_START"
         const val ACTION_STOP = "com.samuel.remotemanager.CAMERA_STOP"
+        const val ACTION_SWITCH_FRONT = "com.samuel.remotemanager.CAMERA_SWITCH_FRONT"
+        const val ACTION_SWITCH_BACK = "com.samuel.remotemanager.CAMERA_SWITCH_BACK"
+        const val LENS_FRONT = "front"
+        const val LENS_BACK = "back"
         private const val CHANNEL_ID = "camera_sharing"
         private const val NOTIFICATION_ID = 4102
     }
@@ -44,18 +48,21 @@ class CameraShareService : LifecycleService() {
     private var cameraProvider: ProcessCameraProvider? = null
     private var databasePath: String? = null
     private var running = false
+    private var selectedLens = LENS_BACK
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_STOP -> stopSharing()
+            ACTION_SWITCH_FRONT -> { selectedLens = LENS_FRONT; startSharing(startId) }
+            ACTION_SWITCH_BACK -> { selectedLens = LENS_BACK; startSharing(startId) }
             ACTION_START, null -> startSharing(startId)
         }
         return START_NOT_STICKY
     }
 
     private fun startSharing(startId: Int) {
-        if (running) return
+        if (running) { bindSelectedCamera(); updateNotification("Camera active · ${selectedLens} camera"); return }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             stopSelf(startId)
             return
@@ -90,19 +97,25 @@ class CameraShareService : LifecycleService() {
             try {
                 val provider = future.get()
                 cameraProvider = provider
-                val capture = ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    .setJpegQuality(55)
-                    .build()
-                imageCapture = capture
-                provider.unbindAll()
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, capture)
+                bindSelectedCamera()
                 captureNextFrame()
             } catch (_: Exception) {
                 updateNotification("Camera could not start. Open the app to check permissions.")
                 stopSharing()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun bindSelectedCamera() {
+        val provider = cameraProvider ?: return
+        val capture = ImageCapture.Builder()
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setJpegQuality(55)
+            .build()
+        imageCapture = capture
+        provider.unbindAll()
+        val selector = if (selectedLens == LENS_FRONT) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+        provider.bindToLifecycle(this, selector, capture)
     }
 
     private fun captureNextFrame() {
