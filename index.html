@@ -84,7 +84,7 @@ window.addEventListener("DOMContentLoaded", () => {
       const audioRemoteStatus = audioRemote.status || "not requested";
       const audioRemoteLabel = audioRemoteStatus === "pending" ? "Request pending — phone app must be open" : audioRemoteStatus === "accepted" ? "Accepted — owner must grant microphone access and tap Start" : audioRemoteStatus === "declined" ? "Last request declined" : "No audio request sent";
       const audioRecording = d.recording?.active === true ? "Recording active (check the phone's visible notification)" : "Not recording";
-      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+(Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div><div class="metric" style="margin-top:8px"><small>Current speed</small><strong>'+escapeHtml(speed)+'</strong><small>Trip distance</small><strong>'+escapeHtml(distance)+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><small style="display:block;margin-top:8px">Audio request</small><strong>'+escapeHtml(audioRemoteLabel)+'</strong><small style="display:block;margin-top:8px">Microphone status</small><strong>'+escapeHtml(audioRecording)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+'<div class="metric" style="margin-top:10px"><strong>Saved archives</strong><p class="notice">Archives are loaded only when requested so they do not delay the dashboard.</p><div class="actions"><button class="secondary" data-load-audio="1" data-device="'+escapeHtml(id)+'">Load last 5 recordings</button><button class="secondary" data-load-camera="1" data-device="'+escapeHtml(id)+'">Load last 10 snapshots</button><button class="secondary" data-load-track="1" data-device="'+escapeHtml(id)+'">Load movement history</button></div><div id="archive-results-'+escapeHtml(id)+'"></div></div><p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
+      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+(Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div><div class="metric" style="margin-top:8px"><small>Current speed</small><strong>'+escapeHtml(speed)+'</strong><small>Trip distance</small><strong>'+escapeHtml(distance)+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><small style="display:block;margin-top:8px">Audio request</small><strong>'+escapeHtml(audioRemoteLabel)+'</strong><small style="display:block;margin-top:8px">Microphone status</small><strong>'+escapeHtml(audioRecording)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-lens="front" data-device="'+escapeHtml(id)+'">Request front camera</button><button class="secondary" data-request-lens="back" data-device="'+escapeHtml(id)+'">Request rear camera</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+'<div class="metric" style="margin-top:10px"><strong>Saved archives</strong><p class="notice">Archives are loaded only when requested so they do not delay the dashboard.</p><div class="actions"><button class="secondary" data-load-audio="1" data-device="'+escapeHtml(id)+'">Load last 5 recordings</button><button class="secondary" data-load-camera="1" data-device="'+escapeHtml(id)+'">Load last 10 snapshots</button><button class="secondary" data-load-track="1" data-device="'+escapeHtml(id)+'">Load movement history</button></div><div id="archive-results-'+escapeHtml(id)+'"></div></div><p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
     }).join("")+'</div>';
   }
   async function discoverDevices() {
@@ -108,7 +108,7 @@ window.addEventListener("DOMContentLoaded", () => {
   function attachDevice(id) {
     if (deviceRefs.has(id)) return;
     const base = firebase.database().ref("users/"+firebase.auth().currentUser.uid+"/devices/"+id);
-    const paths = ["deviceName","sharing","lastSeen","latitude","longitude","accuracyMeters","speedKmh","distanceMeters","trackSessionId","trackStartedAt","recording","remoteCommands/startCamera","remoteCommands/startAudio","camera/active","camera/frame","camera/updatedAt"];
+    const paths = ["deviceName","sharing","lastSeen","latitude","longitude","accuracyMeters","speedKmh","distanceMeters","trackSessionId","trackStartedAt","recording","remoteCommands/startCamera","remoteCommands/startAudio","remoteCommands/switchCamera","camera/active","camera/frame","camera/updatedAt"];
     const refs = [];
     const data = {};
     deviceData.set(id, data);
@@ -243,21 +243,22 @@ window.addEventListener("DOMContentLoaded", () => {
         }
         return;
       }
-      const button = event.target.closest("[data-request-camera], [data-request-audio]");
+      const button = event.target.closest("[data-request-camera], [data-request-audio], [data-request-lens]");
       if (!button) return;
       const user = auth.currentUser;
       const deviceId = button.getAttribute("data-device");
       if (!user || !deviceId) return;
       const isAudio = button.hasAttribute("data-request-audio");
+      const requestedLens = button.getAttribute("data-request-lens");
       button.disabled = true;
       try {
         const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + "-" + Math.random().toString(36).slice(2);
-        const command = isAudio ? "startAudio" : "startCamera";
+        const command = requestedLens ? "switchCamera" : (isAudio ? "startAudio" : "startCamera");
         await database.ref("users/" + user.uid + "/devices/" + deviceId + "/remoteCommands/" + command).set({
-          action: isAudio ? "request_owner_approved_audio" : "open_camera_screen",
-          requestId, status: "pending", requestedAt: Date.now()
+          action: requestedLens ? "request_owner_approved_camera_switch" : (isAudio ? "request_owner_approved_audio" : "open_camera_screen"),
+          ...(requestedLens ? {lens: requestedLens} : {}), requestId, status: "pending", requestedAt: Date.now()
         });
-        button.textContent = "Request sent";
+        button.textContent = requestedLens ? "Switch request sent" : "Request sent";
       } catch (error) {
         button.disabled = false;
         button.textContent = "Request failed — retry";
