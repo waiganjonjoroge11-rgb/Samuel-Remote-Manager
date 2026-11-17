@@ -33,6 +33,9 @@ class MainActivity : Activity() {
     private var audioCommandRef: DatabaseReference? = null
     private var audioCommandListener: ValueEventListener? = null
     private var lastPromptedAudioRequestId: String? = null
+    private var lensCommandRef: DatabaseReference? = null
+    private var lensCommandListener: ValueEventListener? = null
+    private var lastPromptedLensRequestId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,10 +46,12 @@ class MainActivity : Activity() {
         super.onResume()
         listenForRemoteStartRequest()
         listenForRemoteAudioRequest()
+        listenForRemoteLensRequest()
     }
     override fun onPause() {
         stopRemoteCommandListener()
         stopRemoteAudioCommandListener()
+        stopRemoteLensCommandListener()
         super.onPause()
     }
     override fun onNewIntent(intent: Intent) {
@@ -123,6 +128,54 @@ class MainActivity : Activity() {
         }
         audioCommandRef?.addValueEventListener(audioCommandListener!!)
     }
+
+    private fun listenForRemoteLensRequest() {
+        stopRemoteLensCommandListener()
+        val user = auth.currentUser ?: return
+        val prefs = getSharedPreferences("samuel_remote_manager", MODE_PRIVATE)
+        val deviceId = prefs.getString("device_id", null)
+            ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id", it).apply() }
+        lensCommandRef = FirebaseDatabase.getInstance().reference.child("users").child(user.uid)
+            .child("devices").child(deviceId).child("remoteCommands").child("switchCamera")
+        lensCommandListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val command = snapshot.value as? Map<*, *> ?: return
+                if (command["status"] != "pending") return
+                val requestId = command["requestId"]?.toString() ?: return
+                val lens = command["lens"]?.toString()?.lowercase() ?: return
+                if (lens !in listOf("front", "back") || requestId == lastPromptedLensRequestId || isFinishing || isDestroyed) return
+                lastPromptedLensRequestId = requestId
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Remote camera switch request")
+                    .setMessage("Your dashboard requests switching to the $lens camera. Approve to open the camera controls. You must confirm the switch on this phone; the camera indicator and notification remain visible.")
+                    .setNegativeButton("Decline") { _, _ ->
+                        lensCommandRef?.updateChildren(mapOf("status" to "declined", "respondedAt" to System.currentTimeMillis()))
+                    }
+                    .setPositiveButton("Review on phone") { _, _ ->
+                        lensCommandRef?.updateChildren(mapOf("status" to "accepted", "respondedAt" to System.currentTimeMillis()))
+                        startActivity(Intent(this@MainActivity, CameraShareActivity::class.java)
+                            .putExtra(CameraShareActivity.EXTRA_REQUESTED_LENS, lens))
+                    }
+                    .setOnCancelListener {
+                        lensCommandRef?.updateChildren(mapOf("status" to "declined", "respondedAt" to System.currentTimeMillis()))
+                    }
+                    .show()
+            }
+            override fun onCancelled(error: DatabaseError) {
+                Toast.makeText(this@MainActivity, "Camera switch request check failed: ${error.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+        lensCommandRef?.addValueEventListener(lensCommandListener!!)
+    }
+
+    private fun stopRemoteLensCommandListener() {
+        val ref = lensCommandRef
+        val listener = lensCommandListener
+        if (ref != null && listener != null) ref.removeEventListener(listener)
+        lensCommandRef = null
+        lensCommandListener = null
+    }
+
     private fun stopRemoteAudioCommandListener() {
         val ref = audioCommandRef
         val listener = audioCommandListener
