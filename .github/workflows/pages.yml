@@ -5,14 +5,13 @@ on:
     paths:
       - "index.html"
       - "messages.html"
+      - "app/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
       - ".github/workflows/pages.yml"
-  workflow_run:
-    workflows: ["Build Samuel Remote Manager Android APK"]
-    types: [completed]
   workflow_dispatch:
 permissions:
   contents: read
-  actions: read
   pages: write
   id-token: write
 concurrency:
@@ -20,45 +19,36 @@ concurrency:
   cancel-in-progress: true
 jobs:
   deploy:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Prepare website files
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Set up Android SDK
         run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - name: Build Android APK
+        run: gradle --no-daemon clean assembleDebug --stacktrace
+      - name: Prepare website and APK download
+        run: |
+          set -euo pipefail
           mkdir -p _site
           cp index.html messages.html _site/
+          cp app/build/outputs/apk/debug/app-debug.apk _site/Samuel-Remote-Manager.apk
           touch _site/.nojekyll
-      - name: Find latest successful Android build
-        id: android-build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            RUN_ID="${{ github.event.workflow_run.id }}"
-          else
-            RUN_ID="$(gh run list --workflow android.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
-          fi
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
-            echo "No successful Android APK build was found." >&2
-            exit 1
-          fi
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-      - name: Download APK from successful Android build
-        uses: actions/download-artifact@v4
-        with:
-          name: Samuel-Remote-Manager-APK
-          path: _site
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ steps.android-build.outputs.run_id }}
-      - name: Publish APK with stable public filename
-        run: cp _site/app-debug.apk _site/Samuel-Remote-Manager.apk
+          test -s _site/Samuel-Remote-Manager.apk
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
         with:
@@ -76,17 +66,17 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error "$PAGE_URL" -o /tmp/samuel-manager-home.html && grep -qi "Samuel Remote Manager" /tmp/samuel-manager-home.html; then
+            if curl --fail --silent --show-error "${PAGE_URL}" -o /tmp/samuel-manager-home.html && grep -qi "Samuel Remote Manager" /tmp/samuel-manager-home.html; then
               break
             fi
             if [ "$attempt" -eq 12 ]; then
-              echo "GitHub Pages did not serve the expected dashboard after deployment." >&2
+              echo "GitHub Pages did not serve the expected dashboard." >&2
               exit 1
             fi
             sleep 10
           done
           for attempt in $(seq 1 12); do
-            if curl --location --fail --silent --show-error --head "$PAGE_URL/Samuel-Remote-Manager.apk" >/dev/null; then
+            if curl --location --fail --silent --show-error --head "${PAGE_URL%/}/Samuel-Remote-Manager.apk" >/dev/null; then
               echo "Website and APK download both respond successfully."
               exit 0
             fi
@@ -96,5 +86,3 @@ jobs:
             fi
             sleep 10
           done
-
-# Keep this workflow path in android.yml triggers so each rebuilt APK is also published as a permanent GitHub Release asset.
