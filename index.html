@@ -227,12 +227,14 @@ window.addEventListener("DOMContentLoaded", () => {
     const latIndex=find(["latitude","lat","gpslatitude"]);
     const lngIndex=find(["longitude","lon","lng","long","gpslongitude"]);
     const timeIndex=find(["recordedat","timestamp","time","datetime","date","capturedat"]);
-    const accuracyIndex=find(["accuracymeters","accuracy","accuracy m"]);
-    const speedIndex=find(["speedkmh","speed","speedkph"]);
+    const accuracyIndex=find(["accuracymeters","accuracym","accuracy"]);
+    const speedIndex=find(["speedkmh","speedkph","speed"]);
     if(latIndex<0 || lngIndex<0) throw new Error("CSV needs latitude and longitude columns (for example: latitude, longitude).");
     const points=[];
     rows.forEach((r,index)=>{
-      const lat=Number((r[latIndex]||"").trim()), lng=Number((r[lngIndex]||"").trim());
+      const rawLat=(r[latIndex]||"").trim(), rawLng=(r[lngIndex]||"").trim();
+      if(!rawLat || !rawLng) return;
+      const lat=Number(rawLat), lng=Number(rawLng);
       if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return;
       let recordedAt=Date.now()+index;
       if(timeIndex>=0 && r[timeIndex]){
