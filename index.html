@@ -22,7 +22,7 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 <body>
-<header><div class="brand"><div class="logo" aria-hidden="true">⌁</div><div><h1>Samuel Remote Manager</h1><p>Authorized Android device management</p></div></div></header>
+<header><div class="brand"><div class="logo" aria-hidden="true">⌁</div><div><h1>Samuel Remote Manager</h1><p>Authorized Android device management</p></div></div><nav aria-label="Main navigation" style="margin-top:14px"><a class="action secondary" href="#downloads">All downloads</a></nav></header>
 <main>
 <section class="status" id="connection" role="status" aria-live="polite"><span class="dot"></span><strong>Connecting to Firebase…</strong></section>
 <section class="panel" id="authPanel">
@@ -33,7 +33,7 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
 <section class="panel hidden" id="dashboard">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2>Your devices</h2><p class="muted" id="signedInAs"></p></div><button class="secondary" id="signOut">Sign out</button></div>
 <div id="devices"><p class="muted">Waiting for device data…</p></div>
-<div class="actions"><button id="downloadAllJson" class="secondary">Download complete cloud backup (JSON)</button><button id="downloadRecordsCsv" class="secondary">Download records report (CSV)</button></div><p class="notice">Downloads include records available under your signed-in account. JSON includes archived media and can be large; CSV contains searchable record details and excludes raw media bytes.</p><p id="exportMessage" class="notice" aria-live="polite"></p>
+<div id="downloads" class="actions"><button id="downloadAllJson" class="secondary">Download complete cloud backup (JSON)</button><button id="downloadRecordsCsv" class="secondary">Download records report (CSV)</button></div><p class="notice">Downloads include records available under your signed-in account. JSON includes archived media and can be large; CSV contains searchable record details and excludes raw media bytes.</p><p id="exportMessage" class="notice" aria-live="polite"></p>
 </section>
 <section class="panel"><h2>Audio recording</h2><p class="notice">Use Request audio recording on a device card. The phone app must be open. The phone owner must approve the on-phone prompt; this opens the recorder and starts only after microphone permission is granted if needed. A persistent microphone notification remains visible. Short recordings are saved in the owner’s private Firebase Realtime Database archive. A 6 MB file-size limit applies. Silent recording is not supported.</p></section>
 <section class="panel"><h2>Camera sharing</h2><p class="notice">Use “Request camera screen” on a device card to send an owner-confirmed request. The Samuel Remote Manager app must already be open on the phone to receive it. The owner must approve the prompt, grant camera permission if asked, and tap Start. A visible Android notification remains while sharing. This is a periodic still-image feed, not continuous video.</p></section>
