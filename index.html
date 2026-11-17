@@ -97,11 +97,13 @@ window.addEventListener("DOMContentLoaded", () => {
     const user = firebase.auth().currentUser;
     if (!user) return;
     try {
-      const token = await user.getIdToken();
-      const url = firebaseConfig.databaseURL + "/users/" + encodeURIComponent(user.uid) + "/devices.json?shallow=true&auth=" + encodeURIComponent(token);
-      const response = await fetch(url, {cache:"no-store"});
-      if (!response.ok) throw new Error("Device index request failed ("+response.status+")");
-      const keys = await response.json() || {};
+      // Use the authenticated Firebase SDK instead of a separate REST fetch.
+      // This avoids browser fetch/CORS failures and uses the same signed-in session
+      // as the live device listeners below.
+      const indexSnapshot = await firebase.database()
+        .ref("users/" + user.uid + "/devices")
+        .once("value");
+      const keys = indexSnapshot.val() || {};
       Object.keys(keys).forEach(attachDevice);
       for (const id of [...deviceRefs.keys()]) {
         if (!(id in keys)) detachDevice(id);
