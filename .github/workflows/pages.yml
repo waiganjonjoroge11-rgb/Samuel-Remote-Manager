@@ -5,6 +5,7 @@ on:
     paths:
       - "index.html"
       - "messages.html"
+      - "data-analysis.html"
       - "app/**"
       - "*.gradle.kts"
       - "gradle.properties"
@@ -45,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _site
-          cp index.html messages.html _site/
+          cp index.html messages.html data-analysis.html _site/
           cp app/build/outputs/apk/debug/app-debug.apk _site/Samuel-Remote-Manager.apk
           touch _site/.nojekyll
           test -s _site/Samuel-Remote-Manager.apk
