@@ -30,6 +30,7 @@ main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{backgro
 <section class="panel hidden" id="dashboard">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h2>Your devices</h2><p class="muted" id="signedInAs"></p></div><button class="secondary" id="signOut">Sign out</button></div>
 <div id="devices"><p class="muted">Waiting for device data…</p></div>
+<div class="actions"><button id="downloadAllJson" class="secondary">Download complete cloud backup (JSON)</button><button id="downloadRecordsCsv" class="secondary">Download records report (CSV)</button></div><p class="notice">Downloads include records available under your signed-in account. JSON includes archived media and can be large; CSV contains searchable record details and excludes raw media bytes.</p><p id="exportMessage" class="notice" aria-live="polite"></p>
 </section>
 <section class="panel"><h2>Audio recording</h2><p class="notice">Use Request audio recording on a device card. The phone app must be open. The phone owner must approve the on-phone prompt; this opens the recorder and starts only after microphone permission is granted if needed. A persistent microphone notification remains visible. Short recordings are saved in the owner’s private Firebase Realtime Database archive. A 6 MB file-size limit applies. Silent recording is not supported.</p></section>
 <section class="panel"><h2>Camera sharing</h2><p class="notice">Use “Request camera screen” on a device card to send an owner-confirmed request. The Samuel Remote Manager app must already be open on the phone to receive it. The owner must approve the prompt, grant camera permission if asked, and tap Start. A visible Android notification remains while sharing. This is a periodic still-image feed, not continuous video.</p></section>
@@ -197,6 +198,57 @@ window.addEventListener("DOMContentLoaded", () => {
     } catch(error) { target.innerHTML='<p class="error">Could not load archive: '+escapeHtml(error.message)+'</p>'; }
     finally { button.disabled=false; }
   }
+  function downloadBlob(filename, content, mime) {
+    const blob = new Blob([content], {type:mime});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url; link.download = filename; link.style.display = "none";
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+  function flattenForCsv(value, path, rows) {
+    if (value === null || value === undefined) { rows.push([path, ""]); return; }
+    if (Array.isArray(value)) {
+      value.forEach((item,index) => flattenForCsv(item, path+"["+index+"]", rows));
+      return;
+    }
+    if (typeof value === "object") {
+      Object.entries(value).forEach(([key,item]) => {
+        if (/^(audioBase64|frame)$/.test(key)) {
+          rows.push([path+"/"+key, "[media omitted from CSV; included in JSON backup]"]);
+        } else flattenForCsv(item, path ? path+"/"+key : key, rows);
+      });
+      return;
+    }
+    rows.push([path, String(value)]);
+  }
+  async function exportCloudRecords(format) {
+    const user = auth.currentUser;
+    const message = $("exportMessage");
+    const buttons = [$("downloadAllJson"), $("downloadRecordsCsv")];
+    if (!user) return;
+    buttons.forEach(button => button.disabled = true);
+    message.className = "notice"; message.textContent = "Preparing your cloud records…";
+    try {
+      const snapshot = await database.ref("users/"+user.uid).once("value");
+      if (!snapshot.exists()) { message.textContent = "No cloud records are available yet."; return; }
+      const records = snapshot.val();
+      const stamp = new Date().toISOString().replace(/[:.]/g,"-");
+      if (format === "json") {
+        downloadBlob("samuel-remote-manager-backup-"+stamp+".json",
+          JSON.stringify({exportedAt:new Date().toISOString(),account:user.email,records}, null, 2),
+          "application/json;charset=utf-8");
+      } else {
+        const rows = [["record_path","value"]];
+        flattenForCsv(records, "users/"+user.uid, rows);
+        const csv = rows.map(row => row.map(value => '"'+String(value).replace(/"/g,'""')+'"').join(",")).join("\r\n");
+        downloadBlob("samuel-remote-manager-records-"+stamp+".csv", csv, "text/csv;charset=utf-8");
+      }
+      message.className = "success"; message.textContent = "Your cloud records download has been prepared.";
+    } catch (error) {
+      message.className = "error"; message.textContent = "Could not export cloud records: "+error.message;
+    } finally { buttons.forEach(button => button.disabled = false); }
+  }
   function stopDeviceListener() {
     if (discoveryTimer) { clearInterval(discoveryTimer); discoveryTimer = null; }
     for (const id of [...deviceRefs.keys()]) detachDevice(id);
@@ -218,6 +270,8 @@ window.addEventListener("DOMContentLoaded", () => {
       catch (e) { authMessage.className="error"; authMessage.textContent=e.message; }
     });
     $("signOut").addEventListener("click", () => auth.signOut());
+    $("downloadAllJson").addEventListener("click", () => exportCloudRecords("json"));
+    $("downloadRecordsCsv").addEventListener("click", () => exportCloudRecords("csv"));
     $("devices").addEventListener("click", async event => {
       const trackButton = event.target.closest("[data-load-track]");
       if (trackButton) { await loadTrackHistory(trackButton.dataset.device, trackButton); return; }
