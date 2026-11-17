@@ -72,6 +72,8 @@ window.addEventListener("DOMContentLoaded", () => {
       const seen = d.lastSeen ? new Date(Number(d.lastSeen)).toLocaleString() : "Not reported";
       const hasLocation = Number.isFinite(Number(d.latitude)) && Number.isFinite(Number(d.longitude)) && d.latitude !== null && d.longitude !== null;
       const coords = hasLocation ? Number(d.latitude)+", "+Number(d.longitude) : "Location not available";
+      const speed = Number.isFinite(Number(d.speedKmh)) ? Number(d.speedKmh).toFixed(1)+" km/h" : "Waiting for GPS";
+      const distance = Number.isFinite(Number(d.distanceMeters)) ? (Number(d.distanceMeters)/1000).toFixed(2)+" km" : "0.00 km";
       const map = hasLocation ? '<p><a class="action" target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat='+encodeURIComponent(d.latitude)+'&mlon='+encodeURIComponent(d.longitude)+'#map=16/'+encodeURIComponent(d.latitude)+'/'+encodeURIComponent(d.longitude)+'">View on map</a></p>' : "";
       const camera = d.camera || {};
       const cameraView = camera.active && camera.frame ? "<div class='metric' style='margin-top:10px'><small>Live owner-approved camera snapshot</small><img alt='Shared camera snapshot' loading='lazy' style='display:block;width:100%;border-radius:8px;margin-top:8px' src='data:image/jpeg;base64," + escapeHtml(camera.frame) + "'><small>Updated: " + escapeHtml(camera.updatedAt ? new Date(camera.updatedAt).toLocaleTimeString() : "recently") + "</small></div>" : "<p class='notice'>Camera not currently shared by this phone.</p>";
@@ -82,7 +84,7 @@ window.addEventListener("DOMContentLoaded", () => {
       const audioRemoteStatus = audioRemote.status || "not requested";
       const audioRemoteLabel = audioRemoteStatus === "pending" ? "Request pending — phone app must be open" : audioRemoteStatus === "accepted" ? "Accepted — owner must grant microphone access and tap Start" : audioRemoteStatus === "declined" ? "Last request declined" : "No audio request sent";
       const audioRecording = d.recording?.active === true ? "Recording active (check the phone's visible notification)" : "Not recording";
-      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+(Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><small style="display:block;margin-top:8px">Audio request</small><strong>'+escapeHtml(audioRemoteLabel)+'</strong><small style="display:block;margin-top:8px">Microphone status</small><strong>'+escapeHtml(audioRecording)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+'<div class="metric" style="margin-top:10px"><strong>Saved archives</strong><p class="notice">Archives are loaded only when requested so they do not delay the dashboard.</p><div class="actions"><button class="secondary" data-load-audio="1" data-device="'+escapeHtml(id)+'">Load last 5 recordings</button><button class="secondary" data-load-camera="1" data-device="'+escapeHtml(id)+'">Load last 10 snapshots</button></div><div id="archive-results-'+escapeHtml(id)+'"></div></div><p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
+      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+(Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><small style="display:block;margin-top:8px">Audio request</small><strong>'+escapeHtml(audioRemoteLabel)+'</strong><small style="display:block;margin-top:8px">Microphone status</small><strong>'+escapeHtml(audioRecording)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+'<div class="metric" style="margin-top:10px"><strong>Saved archives</strong><p class="notice">Archives are loaded only when requested so they do not delay the dashboard.</p><div class="actions"><button class="secondary" data-load-audio="1" data-device="'+escapeHtml(id)+'">Load last 5 recordings</button><button class="secondary" data-load-camera="1" data-device="'+escapeHtml(id)+'">Load last 10 snapshots</button><button class="secondary" data-load-track="1" data-device="'+escapeHtml(id)+'">Load movement history</button></div><div id="archive-results-'+escapeHtml(id)+'"></div></div><p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
     }).join("")+'</div>';
   }
   async function discoverDevices() {
@@ -106,7 +108,7 @@ window.addEventListener("DOMContentLoaded", () => {
   function attachDevice(id) {
     if (deviceRefs.has(id)) return;
     const base = firebase.database().ref("users/"+firebase.auth().currentUser.uid+"/devices/"+id);
-    const paths = ["deviceName","sharing","lastSeen","latitude","longitude","accuracyMeters","recording","remoteCommands/startCamera","remoteCommands/startAudio","camera/active","camera/frame","camera/updatedAt"];
+    const paths = ["deviceName","sharing","lastSeen","latitude","longitude","accuracyMeters","speedKmh","distanceMeters","trackSessionId","trackStartedAt","recording","remoteCommands/startCamera","remoteCommands/startAudio","camera/active","camera/frame","camera/updatedAt"];
     const refs = [];
     const data = {};
     deviceData.set(id, data);
@@ -130,6 +132,33 @@ window.addEventListener("DOMContentLoaded", () => {
     (deviceRefs.get(id)||[]).forEach(({ref,listener}) => ref.off("value",listener));
     deviceRefs.delete(id);
     deviceData.delete(id);
+  }
+  async function loadTrackHistory(deviceId, button) {
+    const user = firebase.auth().currentUser;
+    const data = deviceData.get(deviceId) || {};
+    const sessionId = data.trackSessionId;
+    const target = document.getElementById("archive-results-" + deviceId);
+    if (!user || !target) return;
+    if (!sessionId) { target.innerHTML = '<p class="notice">No movement track has been recorded yet. Start location sharing on the phone.</p>'; return; }
+    button.disabled = true;
+    target.innerHTML = '<p class="notice">Loading movement history…</p>';
+    try {
+      const ref = firebase.database().ref("users/" + user.uid + "/devices/" + deviceId + "/locationTracks/" + sessionId + "/points");
+      const snap = await ref.limitToLast(300).once("value");
+      const points = [];
+      snap.forEach(child => points.push(child.val() || {}));
+      points.sort((a,b) => Number(a.recordedAt || 0) - Number(b.recordedAt || 0));
+      if (!points.length) { target.innerHTML = '<p class="notice">No GPS points saved in this session yet.</p>'; return; }
+      const rows = points.slice().reverse().map(point => {
+        const when = point.recordedAt ? new Date(Number(point.recordedAt)).toLocaleString() : "Time unavailable";
+        const coords = Number(point.latitude).toFixed(6) + ", " + Number(point.longitude).toFixed(6);
+        const speed = Number(point.speedKmh || 0).toFixed(1) + " km/h";
+        const mapUrl = "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(point.latitude) + "&mlon=" + encodeURIComponent(point.longitude) + "#map=17/" + encodeURIComponent(point.latitude) + "/" + encodeURIComponent(point.longitude);
+        return '<div class="metric" style="margin-top:8px"><small>' + escapeHtml(when) + '</small><strong>' + escapeHtml(speed) + '</strong><span class="notice">' + escapeHtml(coords) + '</span><p><a class="action secondary" target="_blank" rel="noopener" href="' + mapUrl + '">View point on map</a></p></div>';
+      }).join("");
+      target.innerHTML = '<p class="notice">Showing the latest ' + points.length + ' GPS points. Updates are recorded while the owner has location sharing turned on.</p>' + rows;
+    } catch (error) { target.innerHTML = '<p class="error">Could not load movement history: ' + escapeHtml(error.message) + '</p>'; }
+    finally { button.disabled = false; }
   }
   async function loadArchives(deviceId, kind, button) {
     const user = firebase.auth().currentUser;
@@ -190,6 +219,8 @@ window.addEventListener("DOMContentLoaded", () => {
     });
     $("signOut").addEventListener("click", () => auth.signOut());
     $("devices").addEventListener("click", async event => {
+      const trackButton = event.target.closest("[data-load-track]");
+      if (trackButton) { await loadTrackHistory(trackButton.dataset.device, trackButton); return; }
       const archiveButton = event.target.closest("[data-load-audio], [data-load-camera]");
       if (archiveButton) {
         await loadArchives(archiveButton.dataset.device, archiveButton.hasAttribute("data-load-audio") ? "audio" : "camera", archiveButton);
