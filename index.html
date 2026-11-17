@@ -58,6 +58,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const authPanel = $("authPanel"), dashboard = $("dashboard");
   const connection = $("connection"), authMessage = $("authMessage");
   let devicesRef = null, devicesListener = null;
+  // Shared Firebase handles are used by dashboard actions declared above initialization.
+  let auth = null, database = null;
   const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   function setConnection(message, online=false) {
     connection.innerHTML = '<span class="dot '+(online?'on':'')+'"></span><strong>'+escapeHtml(message)+'</strong>';
@@ -375,8 +377,8 @@ window.addEventListener("DOMContentLoaded", () => {
   }
   try {
     firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const database = firebase.database();
+    auth = firebase.auth();
+    database = firebase.database();
     $("signIn").addEventListener("click", async () => {
       authMessage.textContent = "";
       try { await auth.signInWithEmailAndPassword($("email").value.trim(), $("password").value); }
