@@ -1,0 +1,32 @@
+name: Publish Samuel Remote Manager APK release
+on:
+  workflow_run:
+    workflows: ["Build Samuel Remote Manager Android APK"]
+    types: [completed]
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish-release:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          gh run download "$RUN_ID" --repo "$GH_REPO" --name "Samuel-Remote-Manager-APK" --dir release-files
+          test -s release-files/app-debug.apk
+      - name: Publish permanent GitHub Release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          TAG="apk-build-$RUN_ID"
+          gh release create "$TAG" release-files/app-debug.apk \
+            --repo "$GH_REPO" \
+            --title "Samuel Remote Manager APK ($RUN_ID)" \
+            --notes "Automated Android APK build. Source commit: ${{ github.event.workflow_run.head_sha }}. Install only if you trust this app and review its requested permissions."
