@@ -158,6 +158,16 @@ window.addEventListener("DOMContentLoaded", () => {
         return '<div class="metric" style="margin-top:8px"><small>' + escapeHtml(when) + '</small><strong>' + escapeHtml(speed) + '</strong><span class="notice">' + escapeHtml(coords) + '</span><p><a class="action secondary" target="_blank" rel="noopener" href="' + mapUrl + '">View point on map</a></p></div>';
       }).join("");
       target.innerHTML = '<p class="notice">Showing the latest ' + points.length + ' GPS points. Updates are recorded while the owner has location sharing turned on.</p>' + rows;
+       const exportTrack = document.createElement("button");
+       exportTrack.className = "secondary";
+       exportTrack.textContent = "Download movement history (CSV)";
+       exportTrack.addEventListener("click", () => {
+         const columns = ["recordedAt","latitude","longitude","accuracyMeters","speedKmh","speedMetersPerSecond","altitudeMeters","bearingDegrees"];
+         const csvRows = [columns].concat(points.map(point => columns.map(key => point[key] ?? "")));
+         const csv = csvRows.map(row => row.map(value => '"' + String(value).replace(/"/g,'""') + '"').join(",")).join("\r\n");
+         downloadBlob("samuel-movement-history-" + sessionId + ".csv", csv, "text/csv;charset=utf-8");
+       });
+       target.prepend(exportTrack);
     } catch (error) { target.innerHTML = '<p class="error">Could not load movement history: ' + escapeHtml(error.message) + '</p>'; }
     finally { button.disabled = false; }
   }
@@ -178,7 +188,15 @@ window.addEventListener("DOMContentLoaded", () => {
       items.sort((a,b)=>Number(b.capturedAt||0)-Number(a.capturedAt||0));
       if (!items.length) { target.innerHTML='<p class="notice">No saved '+(kind==="audio"?"recordings":"snapshots")+' found.</p>'; return; }
       if (kind==="camera") {
-        target.innerHTML = items.map(item=>'<figure style="margin:10px 0;padding:8px;background:#0c192a;border-radius:8px"><img loading="lazy" alt="Archived camera snapshot" style="display:block;width:100%;border-radius:6px" src="data:image/jpeg;base64,'+escapeHtml(item.frame||'')+'"><figcaption class="notice">'+escapeHtml(item.capturedAt?new Date(Number(item.capturedAt)).toLocaleString():"Date unavailable")+'</figcaption></figure>').join("");
+        target.innerHTML = "";
+         items.forEach((item,index) => {
+           const figure=document.createElement("figure"); figure.style.cssText="margin:10px 0;padding:8px;background:#0c192a;border-radius:8px";
+           const img=document.createElement("img"); img.loading="lazy"; img.alt="Archived camera snapshot"; img.style.cssText="display:block;width:100%;border-radius:6px";
+           img.src="data:image/jpeg;base64,"+(item.frame||""); figure.appendChild(img);
+           const caption=document.createElement("figcaption"); caption.className="notice"; caption.textContent=item.capturedAt?new Date(Number(item.capturedAt)).toLocaleString():"Date unavailable"; figure.appendChild(caption);
+           if(item.frame){ const save=document.createElement("button"); save.className="secondary"; save.textContent="Download photo"; save.addEventListener("click",()=>{const binary=atob(item.frame),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);downloadBlob("camera-snapshot-"+(item.capturedAt||index)+".jpg",new Blob([bytes],{type:"image/jpeg"}),"image/jpeg");}); figure.appendChild(save); }
+           target.appendChild(figure);
+         });
       } else {
         target.innerHTML = "";
         items.forEach(item => {
@@ -188,7 +206,12 @@ window.addEventListener("DOMContentLoaded", () => {
           if (item.audioBase64) {
             const binary=atob(item.audioBase64), bytes=new Uint8Array(binary.length);
             for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-            const player=document.createElement("audio"); player.controls=true; player.preload="none"; player.src=URL.createObjectURL(new Blob([bytes],{type:item.format||"audio/mp4"})); player.style.width="100%"; row.appendChild(player);
+            const mime=item.format||"audio/mp4";
+            const mediaBlob=new Blob([bytes],{type:mime});
+            const player=document.createElement("audio"); player.controls=true; player.preload="none"; player.src=URL.createObjectURL(mediaBlob); player.style.width="100%"; row.appendChild(player);
+            const save=document.createElement("button"); save.className="secondary"; save.textContent="Download audio";
+            save.addEventListener("click",()=>downloadBlob("audio-recording-"+(item.capturedAt||item.key)+".m4a",mediaBlob,mime));
+            row.appendChild(save);
           }
           const remove=document.createElement("button"); remove.className="secondary"; remove.textContent="Delete recording"; remove.style.marginTop="6px";
           remove.addEventListener("click",async()=>{if(!window.confirm("Delete this audio recording from your cloud archive?"))return;remove.disabled=true;try{await firebase.database().ref("users/"+user.uid+"/devices/"+deviceId+"/audioArchive/"+item.key).remove();row.remove();}catch(e){remove.disabled=false;authMessage.className="error";authMessage.textContent="Could not delete recording: "+e.message;}});
