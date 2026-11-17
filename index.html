@@ -88,7 +88,7 @@ window.addEventListener("DOMContentLoaded", () => {
       const audioRemoteStatus = audioRemote.status || "not requested";
       const audioRemoteLabel = audioRemoteStatus === "pending" ? "Request pending — phone app must be open" : audioRemoteStatus === "accepted" ? "Accepted — owner must grant microphone access and tap Start" : audioRemoteStatus === "declined" ? "Last request declined" : "No audio request sent";
       const audioRecording = d.recording?.active === true ? "Recording active (check the phone's visible notification)" : "Not recording";
-      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+(Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div><div class="metric" style="margin-top:8px"><small>Current speed</small><strong>'+escapeHtml(speed)+'</strong><small>Trip distance</small><strong>'+escapeHtml(distance)+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><small style="display:block;margin-top:8px">Audio request</small><strong>'+escapeHtml(audioRemoteLabel)+'</strong><small style="display:block;margin-top:8px">Microphone status</small><strong>'+escapeHtml(audioRecording)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-lens="front" data-device="'+escapeHtml(id)+'">Request front camera</button><button class="secondary" data-request-lens="back" data-device="'+escapeHtml(id)+'">Request rear camera</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+'<div class="metric" style="margin-top:10px"><strong>Saved archives</strong><p class="notice">Archives are loaded only when requested so they do not delay the dashboard.</p><div class="actions"><button class="secondary" data-load-audio="1" data-device="'+escapeHtml(id)+'">Load last 5 recordings</button><button class="secondary" data-load-camera="1" data-device="'+escapeHtml(id)+'">Load last 10 snapshots</button><button class="secondary" data-load-track="1" data-device="'+escapeHtml(id)+'">Load movement history</button></div><div id="archive-results-'+escapeHtml(id)+'"></div></div><p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
+      return '<article class="device"><h3>'+escapeHtml(d.deviceName || "Android device")+'</h3><p><span class="tag">'+(sharing?'Sharing location':'Not sharing')+'</span></p><div class="metric"><small>Last update</small><strong>'+escapeHtml(seen)+'</strong></div><div class="metric" style="margin-top:8px"><small>Location</small><strong>'+escapeHtml(coords)+'</strong></div><div class="metric" style="margin-top:8px"><small>Accuracy</small><strong>'+(Number.isFinite(Number(d.accuracyMeters)) ? escapeHtml(Math.round(Number(d.accuracyMeters))+" metres") : "Unknown")+'</strong></div><div class="metric" style="margin-top:8px"><small>Current speed</small><strong>'+escapeHtml(speed)+'</strong><small>Trip distance</small><strong>'+escapeHtml(distance)+'</strong></div>'+map+'<div class="metric" style="margin-top:10px"><small>Camera request</small><strong>'+escapeHtml(remoteLabel)+'</strong><small style="display:block;margin-top:8px">Audio request</small><strong>'+escapeHtml(audioRemoteLabel)+'</strong><small style="display:block;margin-top:8px">Microphone status</small><strong>'+escapeHtml(audioRecording)+'</strong><div class="actions"><button data-request-camera="1" data-device="'+escapeHtml(id)+'">Request camera screen</button><button class="secondary" data-request-lens="front" data-device="'+escapeHtml(id)+'">Request front camera</button><button class="secondary" data-request-lens="back" data-device="'+escapeHtml(id)+'">Request rear camera</button><button class="secondary" data-request-audio="1" data-device="'+escapeHtml(id)+'">Request audio recording</button></div><p class="notice">The app must be open on the phone. The owner must approve, grant permission if asked, and tap Start.</p></div>'+cameraView+'<div class="metric" style="margin-top:10px"><strong>Saved archives</strong><p class="notice">Archives are loaded only when requested so they do not delay the dashboard.</p><div class="actions"><button class="secondary" data-load-audio="1" data-device="'+escapeHtml(id)+'">Load last 5 recordings</button><button class="secondary" data-load-camera="1" data-device="'+escapeHtml(id)+'">Load last 10 snapshots</button><button class="secondary" data-load-track="1" data-device="'+escapeHtml(id)+'">Load movement history</button><button class="secondary" data-import-track="1" data-device="'+escapeHtml(id)+'">Import GPS CSV</button></div><div id="archive-results-'+escapeHtml(id)+'"></div></div><p class="muted" style="font-size:12px">Device reference: '+escapeHtml(id)+'</p></article>';
     }).join("")+'</div>';
   }
   async function discoverDevices() {
@@ -205,6 +205,66 @@ window.addEventListener("DOMContentLoaded", () => {
     } finally {
       button.disabled = false;
     }
+  }
+  function parseCsvText(text) {
+    const rows=[]; let row=[], field="", quoted=false;
+    for(let i=0;i<text.length;i++){
+      const c=text[i], next=text[i+1];
+      if(c==='"' && quoted && next==='"'){field+='"';i++;}
+      else if(c==='"'){quoted=!quoted;}
+      else if(c==="," && !quoted){row.push(field);field="";}
+      else if((c==="\n" || c==="\r") && !quoted){
+        if(c==="\r" && next==="\n")i++;
+        row.push(field); if(row.some(v=>v.trim()!==""))rows.push(row); row=[];field="";
+      } else field+=c;
+    }
+    row.push(field); if(row.some(v=>v.trim()!==""))rows.push(row);
+    if(rows.length<2) throw new Error("CSV must contain a header row and at least one GPS record.");
+    const headers=rows.shift().map(h=>h.trim().toLowerCase().replace(/[^a-z0-9]/g,""));
+    const find=(names)=>headers.findIndex(h=>names.includes(h));
+    const latIndex=find(["latitude","lat","gpslatitude"]);
+    const lngIndex=find(["longitude","lon","lng","long","gpslongitude"]);
+    const timeIndex=find(["recordedat","timestamp","time","datetime","date","capturedat"]);
+    const accuracyIndex=find(["accuracymeters","accuracy","accuracy m"]);
+    const speedIndex=find(["speedkmh","speed","speedkph"]);
+    if(latIndex<0 || lngIndex<0) throw new Error("CSV needs latitude and longitude columns (for example: latitude, longitude).");
+    const points=[];
+    rows.forEach((r,index)=>{
+      const lat=Number((r[latIndex]||"").trim()), lng=Number((r[lngIndex]||"").trim());
+      if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return;
+      let recordedAt=Date.now()+index;
+      if(timeIndex>=0 && r[timeIndex]){
+        const raw=r[timeIndex].trim(), numeric=Number(raw);
+        const parsed=Number.isFinite(numeric)&&raw!=="" ? (numeric<1e12?numeric*1000:numeric) : Date.parse(raw);
+        if(Number.isFinite(parsed))recordedAt=parsed;
+      }
+      points.push({latitude:lat,longitude:lng,recordedAt,
+        accuracyMeters:accuracyIndex>=0?Number(r[accuracyIndex])||null:null,
+        speedKmh:speedIndex>=0?Number(r[speedIndex])||null:null});
+    });
+    if(!points.length)throw new Error("No valid GPS coordinates were found in this CSV.");
+    points.sort((a,b)=>a.recordedAt-b.recordedAt);
+    return points;
+  }
+  function showImportedTrack(target, points, filename) {
+    const mapId="imported-map-"+Date.now();
+    const coords=points.map(p=>[p.latitude,p.longitude]);
+    target.innerHTML='<p class="notice">Imported '+points.length+' valid GPS point(s) from '+escapeHtml(filename)+'. These are displayed locally and have not been uploaded to Firebase.</p><div id="'+mapId+'" class="movement-map" role="img" aria-label="Imported GPS route map"></div><p class="map-note">Imported route follows the timestamps in the CSV. Missing records are not estimated.</p>';
+    if(window.L){
+      const map=L.map(mapId);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+      coords.forEach((p,i)=>L.circleMarker(p,{radius:6,weight:2}).addTo(map).bindPopup("#"+(i+1)+" · "+escapeHtml(new Date(points[i].recordedAt).toLocaleString())));
+      if(coords.length>1)L.polyline(coords,{weight:4,opacity:.85}).addTo(map);
+      map.fitBounds(coords,{padding:[24,24],maxZoom:16});
+      setTimeout(()=>map.invalidateSize(),100);
+    }else document.getElementById(mapId).innerHTML='<p style="color:#24364b;padding:16px">Map library unavailable. Reload the page to try again.</p>';
+    const exportButton=document.createElement("button");exportButton.className="secondary";exportButton.textContent="Download imported points (CSV)";
+    exportButton.addEventListener("click",()=>{
+      const header=["recordedAt","latitude","longitude","accuracyMeters","speedKmh"];
+      const lines=[header,...points.map(p=>header.map(k=>p[k]??""))];
+      downloadBlob("imported-gps-points.csv",lines.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\r\n"),"text/csv;charset=utf-8");
+    });
+    target.appendChild(exportButton);
   }
   async function loadArchives(deviceId, kind, button) {
     const user = firebase.auth().currentUser;
@@ -331,6 +391,22 @@ window.addEventListener("DOMContentLoaded", () => {
     $("downloadAllJson").addEventListener("click", () => exportCloudRecords("json"));
     $("downloadRecordsCsv").addEventListener("click", () => exportCloudRecords("csv"));
     $("devices").addEventListener("click", async event => {
+      const importButton = event.target.closest("[data-import-track]");
+      if(importButton){
+        const deviceId=importButton.dataset.device;
+        const target=document.getElementById("archive-results-"+deviceId);
+        const picker=document.createElement("input"); picker.type="file"; picker.accept=".csv,text/csv"; picker.style.display="none";
+        document.body.appendChild(picker);
+        picker.addEventListener("change",()=>{
+          const file=picker.files&&picker.files[0]; picker.remove(); if(!file)return;
+          const reader=new FileReader();
+          reader.onload=()=>{try{const points=parseCsvText(String(reader.result||""));showImportedTrack(target,points,file.name);}
+            catch(error){target.innerHTML='<p class="error">Could not import GPS CSV: '+escapeHtml(error.message)+'</p>'; }};
+          reader.onerror=()=>{target.innerHTML='<p class="error">Could not read the selected CSV file.</p>';};
+          reader.readAsText(file);
+        },{once:true});
+        picker.click(); return;
+      }
       const trackButton = event.target.closest("[data-load-track]");
       if (trackButton) { await loadTrackHistory(trackButton.dataset.device, trackButton); return; }
       const archiveButton = event.target.closest("[data-load-audio], [data-load-camera]");
