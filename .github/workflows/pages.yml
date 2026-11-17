@@ -96,3 +96,5 @@ jobs:
             fi
             sleep 10
           done
+
+# Keep this workflow path in android.yml triggers so each rebuilt APK is also published as a permanent GitHub Release asset.
