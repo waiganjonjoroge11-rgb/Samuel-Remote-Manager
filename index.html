@@ -6,17 +6,20 @@
 <meta name="theme-color" content="#0b1220">
 <meta name="description" content="Samuel Remote Manager — an authorized Android device management dashboard.">
 <title>Samuel Remote Manager</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
 :root{color-scheme:dark;--bg:#0b1220;--panel:#142238;--line:#29415f;--muted:#a9b8cc;--blue:#4388f5;--green:#37c98b;--amber:#e7b451}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#162945 0,var(--bg) 58%);color:#f4f7fb;font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial}
 header{padding:26px 16px 20px;text-align:center;border-bottom:1px solid var(--line)}.brand{display:inline-flex;align-items:center;gap:12px}.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#4388f5,#6c5ce7);display:grid;place-items:center;font-size:24px}h1{font-size:clamp(23px,5vw,32px);margin:0}header p{color:var(--muted);margin:6px 0 0}
 main{max-width:900px;margin:25px auto;padding:0 16px 40px}.panel,.device{background:linear-gradient(160deg,#172941,#111d30);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}.panel h2,.device h3{margin:0 0 10px}.muted{color:var(--muted)}.auth-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.auth-grid input{min-width:0;width:100%;padding:12px;border-radius:9px;border:1px solid #38516f;background:#0b1627;color:white;font:inherit}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}button,.action{border:0;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;background:var(--blue);color:white;padding:11px 15px;border-radius:10px;font-weight:650;font:inherit;cursor:pointer}button.secondary,.action.secondary{background:#263750;border:1px solid #38516f}button:disabled{opacity:.55;cursor:wait}.status{padding:13px 15px;border:1px solid #6a5226;background:#302817;border-radius:12px;margin-bottom:16px}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--amber);margin-right:8px}.dot.on{background:var(--green)}.device-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.metric{background:#0c192a;border:1px solid #263d59;border-radius:11px;padding:12px}.metric small{display:block;color:var(--muted)}.metric strong{overflow-wrap:anywhere}.tag{display:inline-block;font-size:12px;padding:4px 9px;border-radius:999px;background:#29374a;color:#d5e0ef}.notice{color:var(--muted);font-size:14px}.hidden{display:none!important}.error{color:#ff9d9d}.success{color:#83e2b5}footer{text-align:center;color:#7f91a9;font-size:13px;padding:18px}@media(max-width:560px){.auth-grid{grid-template-columns:1fr}}
+.movement-map{height:360px;min-height:260px;width:100%;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#e8eef5;margin:12px 0}.map-note{font-size:13px;color:var(--muted)}
 </style>
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="dns-prefetch" href="//www.gstatic.com">
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 <body>
 <header><div class="brand"><div class="logo" aria-hidden="true">⌁</div><div><h1>Samuel Remote Manager</h1><p>Authorized Android device management</p></div></div></header>
@@ -136,40 +139,72 @@ window.addEventListener("DOMContentLoaded", () => {
   }
   async function loadTrackHistory(deviceId, button) {
     const user = firebase.auth().currentUser;
-    const data = deviceData.get(deviceId) || {};
-    const sessionId = data.trackSessionId;
     const target = document.getElementById("archive-results-" + deviceId);
     if (!user || !target) return;
-    if (!sessionId) { target.innerHTML = '<p class="notice">No movement track has been recorded yet. Start location sharing on the phone.</p>'; return; }
     button.disabled = true;
-    target.innerHTML = '<p class="notice">Loading movement history…</p>';
+    target.innerHTML = '<p class="notice">Loading all saved GPS sessions…</p>';
     try {
-      const ref = firebase.database().ref("users/" + user.uid + "/devices/" + deviceId + "/locationTracks/" + sessionId + "/points");
-      const snap = await ref.limitToLast(300).once("value");
+      const tracksRef = firebase.database().ref("users/" + user.uid + "/devices/" + deviceId + "/locationTracks");
+      const tracksSnap = await tracksRef.once("value");
       const points = [];
-      snap.forEach(child => points.push(child.val() || {}));
+      tracksSnap.forEach(sessionSnap => {
+        const sessionId = sessionSnap.key;
+        const session = sessionSnap.val() || {};
+        const saved = session.points || {};
+        Object.keys(saved).forEach(key => {
+          const point = saved[key] || {};
+          const lat = Number(point.latitude), lng = Number(point.longitude);
+          if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+            points.push({...point, sessionId, _key:key});
+          }
+        });
+      });
       points.sort((a,b) => Number(a.recordedAt || 0) - Number(b.recordedAt || 0));
-      if (!points.length) { target.innerHTML = '<p class="notice">No GPS points saved in this session yet.</p>'; return; }
+      if (!points.length) {
+        target.innerHTML = '<p class="notice">No saved GPS points were found. Start location sharing on the phone and keep it enabled while travelling. The dashboard will only show locations actually recorded by the phone.</p>';
+        return;
+      }
+      const coords = points.map(p => [Number(p.latitude), Number(p.longitude)]);
       const rows = points.slice().reverse().map(point => {
         const when = point.recordedAt ? new Date(Number(point.recordedAt)).toLocaleString() : "Time unavailable";
-        const coords = Number(point.latitude).toFixed(6) + ", " + Number(point.longitude).toFixed(6);
-        const speed = Number(point.speedKmh || 0).toFixed(1) + " km/h";
-        const mapUrl = "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(point.latitude) + "&mlon=" + encodeURIComponent(point.longitude) + "#map=17/" + encodeURIComponent(point.latitude) + "/" + encodeURIComponent(point.longitude);
-        return '<div class="metric" style="margin-top:8px"><small>' + escapeHtml(when) + '</small><strong>' + escapeHtml(speed) + '</strong><span class="notice">' + escapeHtml(coords) + '</span><p><a class="action secondary" target="_blank" rel="noopener" href="' + mapUrl + '">View point on map</a></p></div>';
+        const lat = Number(point.latitude), lng = Number(point.longitude);
+        const speed = Number.isFinite(Number(point.speedKmh)) ? Number(point.speedKmh).toFixed(1) + " km/h" : "Speed unavailable";
+        const mapUrl = "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(lat) + "&mlon=" + encodeURIComponent(lng) + "#map=17/" + encodeURIComponent(lat) + "/" + encodeURIComponent(lng);
+        return '<div class="metric" style="margin-top:8px"><small>' + escapeHtml(when) + '</small><strong>' + escapeHtml(speed) + '</strong><span class="notice">' + lat.toFixed(6) + ', ' + lng.toFixed(6) + '</span><p><a class="action secondary" target="_blank" rel="noopener" href="' + mapUrl + '">Open this GPS point</a></p></div>';
       }).join("");
-      target.innerHTML = '<p class="notice">Showing the latest ' + points.length + ' GPS points. Updates are recorded while the owner has location sharing turned on.</p>' + rows;
-       const exportTrack = document.createElement("button");
-       exportTrack.className = "secondary";
-       exportTrack.textContent = "Download movement history (CSV)";
-       exportTrack.addEventListener("click", () => {
-         const columns = ["recordedAt","latitude","longitude","accuracyMeters","speedKmh","speedMetersPerSecond","altitudeMeters","bearingDegrees"];
-         const csvRows = [columns].concat(points.map(point => columns.map(key => point[key] ?? "")));
-         const csv = csvRows.map(row => row.map(value => '"' + String(value).replace(/"/g,'""') + '"').join(",")).join("\r\n");
-         downloadBlob("samuel-movement-history-" + sessionId + ".csv", csv, "text/csv;charset=utf-8");
-       });
-       target.prepend(exportTrack);
-    } catch (error) { target.innerHTML = '<p class="error">Could not load movement history: ' + escapeHtml(error.message) + '</p>'; }
-    finally { button.disabled = false; }
+      const mapId = "movement-map-" + deviceId.replace(/[^a-zA-Z0-9_-]/g,"");
+      target.innerHTML = '<p class="notice">Found ' + points.length + ' genuine GPS point(s) across ' + new Set(points.map(p=>p.sessionId)).size + ' saved session(s). ' + (points.length < 2 ? 'Only one point exists, so a journey line cannot be drawn yet.' : 'The line connects recorded GPS points in timestamp order; gaps mean no location was recorded.') + '</p><div id="' + mapId + '" class="movement-map" role="img" aria-label="Map of recorded GPS locations"></div><p class="map-note">Map tiles © OpenStreetMap contributors. GPS points are shown as recorded; no missing route is estimated.</p>' + rows;
+      if (window.L && document.getElementById(mapId)) {
+        const map = L.map(mapId);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom:19,
+          attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        coords.forEach((point,index) => L.circleMarker(point,{radius:7,weight:2}).addTo(map).bindPopup(
+          "#" + (index+1) + " · " + escapeHtml(new Date(Number(points[index].recordedAt || 0)).toLocaleString())
+        ));
+        if (coords.length > 1) L.polyline(coords,{weight:4,opacity:0.85}).addTo(map);
+        map.fitBounds(coords,{padding:[24,24],maxZoom:16});
+        setTimeout(()=>map.invalidateSize(),100);
+      } else {
+        const mapEl=document.getElementById(mapId);
+        if(mapEl) mapEl.innerHTML='<p style="color:#24364b;padding:16px">Interactive map library did not load. Use the individual OpenStreetMap point links below.</p>';
+      }
+      const exportTrack = document.createElement("button");
+      exportTrack.className = "secondary";
+      exportTrack.textContent = "Download all movement history (CSV)";
+      exportTrack.addEventListener("click", () => {
+        const columns = ["recordedAt","latitude","longitude","accuracyMeters","speedKmh","speedMetersPerSecond","altitudeMeters","bearingDegrees","sessionId"];
+        const csvRows = [columns].concat(points.map(point => columns.map(key => point[key] ?? "")));
+        const csv = csvRows.map(row => row.map(value => '"' + String(value).replace(/"/g,'""') + '"').join(",")).join("\r\n");
+        downloadBlob("samuel-movement-history.csv", csv, "text/csv;charset=utf-8");
+      });
+      target.prepend(exportTrack);
+    } catch (error) {
+      target.innerHTML = '<p class="error">Could not load movement history: ' + escapeHtml(error.message) + '</p>';
+    } finally {
+      button.disabled = false;
+    }
   }
   async function loadArchives(deviceId, kind, button) {
     const user = firebase.auth().currentUser;
