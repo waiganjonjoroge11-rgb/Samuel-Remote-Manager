@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.Gravity
@@ -227,6 +228,7 @@ class MainActivity : Activity() {
             root.addView(Button(this).apply { text="Open SMS requests"; setOnClickListener { startActivity(Intent(this@MainActivity,SmsRequestsActivity::class.java)) } })
             root.addView(TextView(this).apply { text="To share a received message: open it in Messages, choose Share, select Samuel Remote Manager, review it, then confirm."; textSize=13f; setPadding(0,8,0,12) })
             root.addView(Button(this).apply { text="Start sharing my location"; setOnClickListener { requestLocationAndStart() } })
+            root.addView(Button(this).apply { text="Open GPS data analysis"; setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://waiganjonjoroge11-rgb.github.io/Samuel-Remote-Manager/"))) } })
             root.addView(Button(this).apply { text="Open camera sharing"; setOnClickListener { startActivity(Intent(this@MainActivity,CameraShareActivity::class.java)) } })
             root.addView(Button(this).apply { text="Open audio recorder"; setOnClickListener { startActivity(Intent(this@MainActivity,AudioRecordActivity::class.java)) } })
             root.addView(Button(this).apply { text="Stop location sharing"; setOnClickListener { stopService(Intent(this@MainActivity,LocationShareService::class.java)); status.text="Location sharing stopped." } })
