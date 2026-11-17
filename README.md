@@ -5,7 +5,7 @@ Consent-based Android device status and sharing dashboard.
 ## Implemented features
 
 - Firebase Email/Password authentication on Android and the website.
-- Owner-started location sharing with a persistent Android notification.
+- Owner-started high-accuracy GPS movement tracking with a persistent Android notification. While sharing is on, the app records timestamped route points, current speed (km/h), GPS accuracy, optional altitude/bearing, and cumulative trip distance. The dashboard shows live speed/distance and can load the latest 300 saved points for the current tracking session.
 - Owner-approved camera sharing: the phone owner must approve the request, grant camera permission, and tap **Start Camera Sharing**. The foreground-service notification stays visible. The website shows the current still image and keeps up to 30 archived snapshots.
 - Owner-approved audio recording: the phone owner must approve the on-phone dashboard prompt (or tap **Start audio recording** locally), grant microphone permission if Android asks, and a persistent microphone notification remains visible. An approved remote request opens the recorder and starts capture only after that on-phone approval. Recordings are saved to the owner's private Firebase Realtime Database archive; each recording is limited to 6 MB.
 - SMS requests are opened in the phone's SMS app. The phone owner must review and press **Send**. Received texts appear on the dashboard only after the owner explicitly shares them.
@@ -20,7 +20,7 @@ This is not covert monitoring or full remote desktop control. The Android app mu
 3. In **Authentication → Settings → Authorized domains**, ensure `waiganjonjoroge11-rgb.github.io` is listed.
 4. The Firebase client configuration is already included in the Android app and website. If you replace the Firebase project, update both configurations to the same project.
 5. Install the APK, sign in or create an account, and use the same account on the website.
-6. On the phone, grant the requested permissions and tap **Start sharing my location** if you want the device to appear on the dashboard. Keep the app open when sending remote camera/audio requests.
+6. On the phone, grant location permission and tap **Start sharing my location** to begin GPS tracking. The visible ongoing notification confirms tracking is active; tap **Stop location sharing** to end it. Keep location permission enabled and allow background location/foreground service operation in Android settings if your device prompts. Keep the app open when sending remote camera/audio requests.
 
 The Spark plan avoids requiring a billing account, but usage limits apply. Realtime Database audio storage can grow quickly; each audio recording is capped at 6 MB. Monitor usage in Firebase Console.
 
